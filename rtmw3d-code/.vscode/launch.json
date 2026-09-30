@@ -18,10 +18,11 @@
             "console": "integratedTerminal",
             "cwd": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d",
             "env": {
-                "PYTHONPATH": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d"
+                "PYTHONPATH": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d",
+                "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1"
             },
             "args": [
-                "configs\\rtmdet_m_640-8xb32_coco-person.py",
+                "demo\\configs\\rtmdet_m_640-8xb32_coco-person.py",
                 "${workspaceFolder}\\checkpoints\\rtmdet_m.pth",
                 "configs\\rtmw3d-l_8xb64_cocktail14-384x288.py",
                 "${workspaceFolder}\\checkpoints\\rtmw3d_l.pth",
