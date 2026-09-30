@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+.pytest_cache*
+.mypy_cache/
+.ruff_cache/
+
+# Models and large files
+checkpoints/
+*.pth
+*.pt
+*.onnx
+*.engine
+
+# Input and output data
+input/
+output/
+logs/
+
+# Videos and generated data
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.csv
+*.npy
+*.npz
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Environment files
+.env
+.env.*
+
+input/*
+!input/.gitkeep
+
+output/*
+!output/.gitkeep
+
+checkpoints/*
+!checkpoints/.gitkeep
