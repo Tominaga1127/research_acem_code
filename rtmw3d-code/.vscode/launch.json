@@ -1,0 +1,38 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "RTMW3D: Check Environment",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}\\src\\check_environment.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "RTMW3D: Infer Test Image",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d\\demo\\body3d_img2pose_demo.py",
+            "console": "integratedTerminal",
+            "cwd": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d",
+            "env": {
+                "PYTHONPATH": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d"
+            },
+            "args": [
+                "configs\\rtmdet_m_640-8xb32_coco-person.py",
+                "${workspaceFolder}\\checkpoints\\rtmdet_m.pth",
+                "configs\\rtmw3d-l_8xb64_cocktail14-384x288.py",
+                "${workspaceFolder}\\checkpoints\\rtmw3d_l.pth",
+                "--input",
+                "${workspaceFolder}\\input\\test.jpg",
+                "--output-root",
+                "${workspaceFolder}\\output",
+                "--device",
+                "cuda:0"
+            ],
+            "justMyCode": false
+        }
+    ]
+}
