@@ -3,21 +3,31 @@ __pycache__/
 *.py[cod]
 *.pyd
 *.pyo
-.pytest_cache*
+.pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Models and large files
-checkpoints/
+# Model files
 *.pth
 *.pt
 *.onnx
 *.engine
 
-# Input and output data
-input/
-output/
-logs/
+# Input data
+/input/*
+!/input/.gitkeep
+
+# Generated output
+/output/*
+!/output/.gitkeep
+
+# Model checkpoints
+/checkpoints/*
+!/checkpoints/.gitkeep
+
+# Logs
+/logs/*
+!/logs/.gitkeep
 
 # Videos and generated data
 *.mp4
@@ -36,12 +46,3 @@ dist/
 # Environment files
 .env
 .env.*
-
-input/*
-!input/.gitkeep
-
-output/*
-!output/.gitkeep
-
-checkpoints/*
-!checkpoints/.gitkeep
