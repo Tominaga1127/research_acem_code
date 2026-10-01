@@ -29,9 +29,38 @@
                 "--input",
                 "${workspaceFolder}\\input\\test.jpg",
                 "--output-root",
-                "${workspaceFolder}\\output",
+                "${workspaceFolder}\\output\\test",
                 "--device",
                 "cuda:0"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "RTMW3D: Infer Test Video",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d\\demo\\body3d_img2pose_demo.py",
+            "console": "integratedTerminal",
+            "cwd": "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d",
+            "env": {
+                "PYTHONPATH": "C:\\work\\rtmw3d-workspace\\mmpose;C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d",
+                "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1"
+            },
+            "args": [
+                "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d\\demo\\configs\\rtmdet_m_640-8xb32_coco-person.py",
+                "${workspaceFolder}\\checkpoints\\rtmdet_m.pth",
+                "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d\\configs\\rtmw3d-l_8xb64_cocktail14-384x288.py",
+                "${workspaceFolder}\\checkpoints\\rtmw3d_l.pth",
+                "--input",
+                "${workspaceFolder}\\input\\test.mp4",
+                "--output-root",
+                "${workspaceFolder}\\output\\test",
+                "--device",
+                "cuda:0",
+                "--bbox-thr",
+                "0.5",
+                "--kpt-thr",
+                "0.3"
             ],
             "justMyCode": false
         }
