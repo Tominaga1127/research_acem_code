@@ -1,4 +1,18 @@
 {
+    "python.defaultInterpreterPath": "C:\\Users\\ataka\\miniconda3\\envs\\rtmw3d\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.extraPaths": [
+        "C:\\work\\rtmw3d-workspace\\mmpose",
+        "C:\\work\\rtmw3d-workspace\\mmpose\\projects\\rtmpose3d"
+    ],
+    "python.analysis.useLibraryCodeForTypes": true,
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true
+    },
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda"
 }
