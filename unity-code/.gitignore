@@ -1,0 +1,44 @@
+# Unity-generated caches and local settings
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Build output
+/[Bb]uild/
+/[Bb]uilds/
+
+# Generated IDE files and local IDE settings
+/.vs/
+/.idea/
+/.vscode/
+/.gradle/
+/*.csproj
+/*.unityproj
+/*.sln
+/*.slnx
+/*.suo
+/*.tmp
+/*.user
+/*.userprefs
+/*.pidb
+/*.booproj
+/*.svd
+/*.opendb
+/*.VC.db
+/*.pidb.meta
+
+# Unity crash reports
+/sysinfo.txt
+/mono_crash.*
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Keep Assets (including mocopi scripts, native DLLs, and .meta files),
+# Packages/manifest.json, Packages/packages-lock.json, and ProjectSettings.
