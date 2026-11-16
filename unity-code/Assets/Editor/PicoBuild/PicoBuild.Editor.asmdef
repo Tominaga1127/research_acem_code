@@ -1,0 +1,5 @@
+{
+  "name": "PicoBuild.Editor",
+  "references": ["PICO.Platform"],
+  "includePlatforms": ["Editor"]
+}

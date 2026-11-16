@@ -1,0 +1,6 @@
+{
+  "name": "PicoBuild.Editor.Tests",
+  "references": ["PicoBuild.Editor", "PICO.Platform", "PICO.Platform.Editor"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
