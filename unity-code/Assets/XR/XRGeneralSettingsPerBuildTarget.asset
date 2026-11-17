@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Standalone Settings
   m_EditorClassIdentifier: Unity.XR.Management::UnityEngine.XR.Management.XRGeneralSettings
   m_LoaderManagerInstance: {fileID: 8647831472571835007}
-  m_InitManagerOnStart: 0
+  m_InitManagerOnStart: 1
 --- !u!114 &-7526716668139224405
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -108,4 +108,4 @@ MonoBehaviour:
   m_AutomaticLoading: 0
   m_AutomaticRunning: 0
   m_Loaders:
-  - {fileID: 11400000, guid: 444194d9f0a12e2489461dd7d7a1ede3, type: 2}
+  - {fileID: 11400000, guid: cd5da22a648e0d544a74750d4c239ac3, type: 2}
