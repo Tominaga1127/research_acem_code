@@ -156,3 +156,9 @@ crashlytics-build.properties
 
 # Imported XR samples and TextMesh Pro resources may be referenced by scenes.
 # Keep Assets/Samples/, Assets/TextMesh Pro/, and their .meta files tracked.
+
+# Exclude XML and PNG files and their Unity metadata
+*.xml
+*.xml.meta
+*.png
+*.png.meta
