@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 namespace DanceLearning.Editor
 {
     /// <summary>
-    /// Main.unityに、XR Originを囲む床と四方の壁を作成するエディター専用のファイル。
+    /// Main.unityに、XR Originを囲む床・四方の壁・天井を作成するエディター専用のファイル。
     /// 形状やマテリアルをアセットとして保存するため、HMD実行時には生成処理が走らない。
     /// </summary>
     public static class DanceStudioBuilder
@@ -46,6 +46,8 @@ namespace DanceLearning.Editor
             // 床の厚さを下側に設けることで、床の上面をOriginと同じ高さにそろえる。
             root.transform.position = origin.position + new Vector3(0, 0, 2);
             Box(root.transform, "Floor", new Vector3(0, -0.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), floor);
+            // 天井の下面を床から4mにそろえ、壁の上端まで隙間なく覆う。
+            Box(root.transform, "Ceiling", new Vector3(0, 4.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), wall);
             var walls = new GameObject("Walls").transform;
             walls.SetParent(root.transform, false);
             Box(walls, "Front Wall", new Vector3(0, 2, 8.1f), new Vector3(12.4f, 4, 0.2f), wall);
@@ -82,7 +84,41 @@ namespace DanceLearning.Editor
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             CapturePreview(root.transform.position);
-            Debug.Log("Dance studio created: floor and four walls, no mirror.");
+            Debug.Log("Dance studio created: floor, four walls and ceiling.");
+        }
+
+        /// <summary>
+        /// 既存のスタジオプレハブに天井だけを追加し、床や壁の編集内容を保持する。
+        /// Mainのプレハブインスタンスにも反映される。天井が既にある場合は追加しない。
+        /// </summary>
+        [MenuItem("Dance Learning/Add Ceiling To Main")]
+        public static void AddCeilingToMain()
+        {
+            var root = PrefabUtility.LoadPrefabContents(prefabPath);
+            try
+            {
+                // 再実行しても天井が重複しないよう、未作成の場合だけ直方体を追加する。
+                if (root.transform.Find("Ceiling") == null)
+                {
+                    var wall = AssetDatabase.LoadAssetAtPath<Material>(materialPath + "/Warm Plaster.mat");
+                    Box(root.transform, "Ceiling", new Vector3(0, 4.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), wall);
+                    PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+                }
+            }
+            finally
+            {
+                // 保存中に例外が起きても、プレハブ編集用の一時シーンは解放する。
+                PrefabUtility.UnloadPrefabContents(root);
+            }
+
+            AssetDatabase.SaveAssets();
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            // Main以外を編集中なら、保存・撮影は行わずプレハブの更新だけで終了する。
+            if (scene.path == scenePath)
+            {
+                EditorSceneManager.SaveScene(scene);
+                CapturePreview(GameObject.Find("Dance Studio").transform.position);
+            }
         }
 
         /// <summary>
@@ -150,7 +186,7 @@ namespace DanceLearning.Editor
 
         /// <summary>
         /// 親を基準とした位置と大きさで直方体を作成し、共通マテリアルを割り当てる。
-        /// colliderがtrueなら床・壁用の当たり判定を残し、falseなら装飾用として取り除く。
+        /// colliderがtrueなら床・壁・天井の当たり判定を残し、falseなら装飾用として取り除く。
         /// </summary>
         private static void Box(Transform parent, string name, Vector3 position, Vector3 scale, Material material, bool collider = true)
         {
@@ -164,7 +200,7 @@ namespace DanceLearning.Editor
             renderer.sharedMaterial = material;
             // 囲いが既存のDirectional Lightを遮って室内を暗くしないよう、影の投影を無効にする。
             renderer.shadowCastingMode = ShadowCastingMode.Off;
-            // パネルや巾木などの装飾には当たり判定を持たせず、床と壁だけで判定する。
+            // パネルや巾木などの装飾には当たり判定を持たせず、床・壁・天井で判定する。
             if (!collider) Object.DestroyImmediate(item.GetComponent<Collider>());
         }
 

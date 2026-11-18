@@ -45,8 +45,8 @@ namespace DanceLearning.Tests
             Assert.That(studio.GetComponentsInChildren<MonoBehaviour>(), Is.Empty);
             Assert.That(studio.GetComponentsInChildren<Camera>(), Is.Empty);
             Assert.That(studio.GetComponentsInChildren<Light>(), Is.Empty);
-            // スタジオ直下がFloorとWallsの2つであることを確認する。
-            Assert.That(studio.transform.childCount, Is.EqualTo(2));
+            // スタジオ直下がFloor・Walls・Ceilingの3つであることを確認する。
+            Assert.That(studio.transform.childCount, Is.EqualTo(3));
             // 床・壁・装飾の全MeshRendererを順に調べ、マテリアルと対応シェーダーを確認する。
             foreach (var renderer in studio.GetComponentsInChildren<MeshRenderer>())
             {
@@ -54,6 +54,32 @@ namespace DanceLearning.Tests
                 Assert.That(renderer.sharedMaterial.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"));
                 Assert.That(renderer.sharedMaterial.shader.isSupported, Is.True);
             }
+        }
+
+        /// <summary>床から4mの位置に天井があり、室内中央と四隅の上方を覆っていることを確認する。</summary>
+        [Test]
+        public void CeilingCoversRoomAtFourMetersAboveFloor()
+        {
+            EditorSceneManager.OpenScene("Assets/DanceLearning/Scenes/Main.unity");
+            var studio = GameObject.Find("Dance Studio").transform;
+            var ceiling = studio.Find("Ceiling");
+            Assert.That(ceiling, Is.Not.Null);
+            var collider = ceiling.GetComponent<BoxCollider>();
+            Assert.That(collider.bounds.min.y, Is.EqualTo(studio.position.y + 4).Within(0.001f));
+            // 中央と、壁のすぐ内側の四隅から真上へレイを飛ばし、天井に当たるかを順番に調べる。
+            foreach (var point in new[]
+            {
+                Vector3.zero, new Vector3(-5.9f, 0, -7.9f), new Vector3(5.9f, 0, -7.9f),
+                new Vector3(-5.9f, 0, 7.9f), new Vector3(5.9f, 0, 7.9f)
+            })
+            {
+                var ray = new Ray(studio.TransformPoint(point + Vector3.up), Vector3.up);
+                Assert.That(collider.Raycast(ray, out var hit, 5), Is.True);
+                Assert.That(hit.distance, Is.EqualTo(3).Within(0.001f));
+            }
+            // 天井が既存のDirectional Lightを遮らず、室内の明るさを保つ設定を確認する。
+            Assert.That(ceiling.GetComponent<MeshRenderer>().shadowCastingMode,
+                Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.Off));
         }
     }
 }
