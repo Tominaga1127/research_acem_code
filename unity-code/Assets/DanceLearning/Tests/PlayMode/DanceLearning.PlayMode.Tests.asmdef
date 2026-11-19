@@ -1,0 +1,5 @@
+{
+    "name": "DanceLearning.PlayMode.Tests",
+    "references": ["DanceLearning.Playback", "UnityEngine.UI", "Unity.InputSystem"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}

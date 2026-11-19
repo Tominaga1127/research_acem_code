@@ -1,0 +1,4 @@
+{
+    "name": "DanceLearning.Playback",
+    "references": ["UnityEngine.UI", "Unity.RenderPipelines.Universal.Runtime"]
+}

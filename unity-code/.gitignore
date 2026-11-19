@@ -162,3 +162,7 @@ crashlytics-build.properties
 *.xml.meta
 *.png
 *.png.meta
+
+# Exclude animation data
+*.fbx
+*.fbx.meta
