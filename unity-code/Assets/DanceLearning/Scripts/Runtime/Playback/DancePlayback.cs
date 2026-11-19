@@ -8,7 +8,7 @@ using UnityEngine.Rendering.Universal;
 namespace DanceLearning
 {
     /// <summary>
-    /// FBXのモーションをボタン操作で再生し、XRカメラをアバターの目に追従させる。
+    /// FBXのモーションを再生し、操作に応じてXRカメラを一人称と三人称に切り替える。
     /// </summary>
     [DefaultExecutionOrder(100)]
     public sealed class DancePlayback : MonoBehaviour
@@ -19,9 +19,16 @@ namespace DanceLearning
         [SerializeField] private Transform xrOrigin;
         [SerializeField] private Camera viewCamera;
         [SerializeField] private Button playButton;
+        [SerializeField] private Button viewpointButton;
+        [SerializeField] private Text viewpointLabel;
+        [SerializeField, Min(0)] private float thirdPersonDistance = 0.65f;
+        [SerializeField, Min(0)] private float thirdPersonHeight = 0.25f;
 
         private float elapsed;
         private bool primaryButtonWasPressed;
+        private bool secondaryButtonWasPressed;
+        private bool isThirdPerson;
+        private Vector3 avatarHeading = Vector3.forward;
 #if UNITY_EDITOR
         private UniversalAdditionalCameraData cameraData;
         private bool xrRenderingEnabled;
@@ -40,7 +47,7 @@ namespace DanceLearning
             Application.onBeforeRender += AlignBeforeRender;
             ApplyPose(0);
             playButton.gameObject.SetActive(true);
-            FollowEyes();
+            FollowAvatar();
         }
 
         /// <summary>再生ボタンから呼び出し、クリップを先頭から1回再生する。</summary>
@@ -56,21 +63,36 @@ namespace DanceLearning
             playButton.gameObject.SetActive(false);
         }
 
-        /// <summary>PICO右コントローラーのAを、画面の再生ボタンと同じ操作として扱う。</summary>
+        /// <summary>再生時刻を保ったまま視点を切り替え、ボタンに現在の視点を表示する。</summary>
+        public void ToggleViewpoint()
+        {
+            isThirdPerson = !isThirdPerson;
+            viewpointLabel.text = isThirdPerson ? "Third Person  (B)" : "First Person  (B)";
+            FollowAvatar();
+        }
+
+        /// <summary>PICO右コントローラーのAとBを、画面の再生ボタンと視点ボタンに対応させる。</summary>
         private void Update()
         {
 #if UNITY_EDITOR
             UpdateEditorDisplay();
 #endif
             var controller = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-            var pressed = controller.TryGetFeatureValue(CommonUsages.primaryButton, out var value) && value;
-            // 押した瞬間だけ反応させ、長押しで再生を繰り返さない。
-            if (pressed && !primaryButtonWasPressed && playButton.isActiveAndEnabled)
-                playButton.onClick.Invoke();
-            primaryButtonWasPressed = pressed;
+            HandleButton(controller, CommonUsages.primaryButton, playButton, ref primaryButtonWasPressed);
+            HandleButton(controller, CommonUsages.secondaryButton, viewpointButton, ref secondaryButtonWasPressed);
         }
 
-        /// <summary>再生中は記録時刻を進め、そのフレームの目の位置にカメラを動かす。</summary>
+        /// <summary>有効なボタンを押した瞬間だけクリックとして扱い、長押し時の連続操作を防ぐ。</summary>
+        private static void HandleButton(InputDevice controller, InputFeatureUsage<bool> usage, Button button,
+            ref bool wasPressed)
+        {
+            var pressed = controller.TryGetFeatureValue(usage, out var value) && value;
+            if (pressed && !wasPressed && button.isActiveAndEnabled && button.IsInteractable())
+                button.onClick.Invoke();
+            wasPressed = pressed;
+        }
+
+        /// <summary>再生中は記録時刻を進め、そのフレームのアバターにカメラを追従させる。</summary>
         private void LateUpdate()
         {
             if (IsPlaying)
@@ -85,7 +107,7 @@ namespace DanceLearning
                 }
             }
 
-            FollowEyes();
+            FollowAvatar();
         }
 
         /// <summary>指定時刻の姿勢だけを評価し、自動再生やループを避ける。</summary>
@@ -94,11 +116,11 @@ namespace DanceLearning
             clip.SampleAnimation(avatar, time);
         }
 
-        /// <summary>HMDの直前の姿勢更新を受けた後、カメラの位置を目に合わせ直す。</summary>
+        /// <summary>描画直前のHMD追跡更新後に、アバターに合わせてカメラの姿勢を調整する。</summary>
         [BeforeRenderOrder(100)]
         private void AlignBeforeRender()
         {
-            FollowEyes();
+            FollowAvatar();
         }
 
 #if UNITY_EDITOR
@@ -118,15 +140,29 @@ namespace DanceLearning
         }
 #endif
 
-        /// <summary>カメラを目の位置に固定し、アバターの水平な向きにHMDの回転を重ねる。</summary>
-        private void FollowEyes()
+        /// <summary>視点に応じてXR Originを調整し、HMDの並進を相殺する。</summary>
+        private void FollowAvatar()
         {
             var heading = Vector3.ProjectOnPlane(eyes.forward, Vector3.up);
             // 真上・真下を向いた瞬間は直前の水平向きを保つ。
             if (heading.sqrMagnitude > 0.0001f)
-                xrOrigin.rotation = Quaternion.LookRotation(heading);
+                avatarHeading = heading.normalized;
 
-            xrOrigin.position += eyes.position - viewCamera.transform.position;
+            var targetPosition = eyes.position;
+            if (isThirdPerson)
+            {
+                // 頭の向きは後方位置の計算にだけ使い、カメラの回転はHMDの追跡に任せる。
+                targetPosition = eyes.parent.position - avatarHeading * thirdPersonDistance +
+                    Vector3.up * thirdPersonHeight;
+                xrOrigin.rotation = Quaternion.identity;
+            }
+            else
+            {
+                // 一人称では目のワールド回転を基準にして、HMDのローカル回転を重ねる。
+                xrOrigin.rotation = eyes.rotation;
+            }
+
+            xrOrigin.position += targetPosition - viewCamera.transform.position;
         }
 
         /// <summary>コンポーネントを無効化したときに再生を終了する。</summary>

@@ -13,14 +13,14 @@ using Unity.XR.CoreUtils;
 
 namespace DanceLearning.Editor
 {
-    /// <summary>Mainに収録済みFBXと再生UIを配置し、アバター用の目の位置を設定する。</summary>
+    /// <summary>Mainに収録済みFBXと再生・視点操作のUIを配置し、アバターの目の位置を設定する。</summary>
     public static class DancePlaybackSceneBuilder
     {
         private const string ScenePath = "Assets/DanceLearning/Scenes/Main.unity";
         private const string RecordingPath = "Assets/DanceLearning/Animations/MCPM_20261117_140210_refined.fbx";
         private const string SessionName = "Dance Playback";
 
-        /// <summary>収録クリップ、シーンの既存XR Origin、再生ボタンを接続して保存する。</summary>
+        /// <summary>収録クリップ、シーンの既存XR Origin、操作ボタンを接続して保存する。</summary>
         [MenuItem("Dance Learning/Place Recording In Main")]
         public static void Build()
         {
@@ -72,15 +72,21 @@ namespace DanceLearning.Editor
             session.transform.position = StartingPlacement(model, clip, origin.transform.position);
 
             var playback = session.AddComponent<DancePlayback>();
-            var button = CreateButton(camera);
-            UnityEventTools.AddPersistentListener(button.onClick, playback.PlayFromStart);
+            var panel = CreateControlPanel(camera);
+            var playButton = CreateButton(panel, "Play Recording", "Play  (A)", -146, 240, out _);
+            var viewpointButton = CreateButton(panel, "Switch Viewpoint", "First Person  (B)", 126, 280,
+                out var viewpointLabel);
+            UnityEventTools.AddPersistentListener(playButton.onClick, playback.PlayFromStart);
+            UnityEventTools.AddPersistentListener(viewpointButton.onClick, playback.ToggleViewpoint);
             var serialized = new SerializedObject(playback);
             serialized.FindProperty("avatar").objectReferenceValue = avatar;
             serialized.FindProperty("clip").objectReferenceValue = clip;
             serialized.FindProperty("eyes").objectReferenceValue = eyes;
             serialized.FindProperty("xrOrigin").objectReferenceValue = origin.transform;
             serialized.FindProperty("viewCamera").objectReferenceValue = camera;
-            serialized.FindProperty("playButton").objectReferenceValue = button;
+            serialized.FindProperty("playButton").objectReferenceValue = playButton;
+            serialized.FindProperty("viewpointButton").objectReferenceValue = viewpointButton;
+            serialized.FindProperty("viewpointLabel").objectReferenceValue = viewpointLabel;
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene);
@@ -159,20 +165,40 @@ namespace DanceLearning.Editor
             return shape;
         }
 
-        /// <summary>PCのマウスとPICOのAで使える、XRカメラの前に表示する再生ボタンを作る。</summary>
-        private static Button CreateButton(Camera camera)
+        /// <summary>XRカメラの前に、マウスで操作できるワールド空間のパネルを作る。</summary>
+        private static RectTransform CreateControlPanel(Camera camera)
         {
             var panel = new GameObject("Playback UI", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             panel.transform.SetParent(camera.transform, false);
             panel.transform.localPosition = new Vector3(0, -0.23f, 1.2f);
             panel.transform.localScale = Vector3.one * 0.0016f;
-            panel.GetComponent<RectTransform>().sizeDelta = new Vector2(240, 62);
+            var rect = panel.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(532, 62);
             var canvas = panel.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.worldCamera = camera;
 
-            var buttonObject = new GameObject("Play Recording", typeof(RectTransform), typeof(Image), typeof(Button));
-            FitToParent(buttonObject.GetComponent<RectTransform>(), panel.transform);
+            // 別の入力モジュールがある場合は既存のEventSystemを使う。
+            if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() == null)
+            {
+                var eventSystem = new GameObject("Playback Event System", typeof(EventSystem),
+                    typeof(InputSystemUIInputModule));
+                eventSystem.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
+            }
+
+            return rect;
+        }
+
+        /// <summary>パネル内の指定位置に、共通の配色と文字サイズで操作ボタンを作る。</summary>
+        private static Button CreateButton(RectTransform panel, string objectName, string caption, float centerX,
+            float width, out Text text)
+        {
+            var buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button));
+            var buttonRect = buttonObject.GetComponent<RectTransform>();
+            buttonRect.SetParent(panel, false);
+            buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+            buttonRect.anchoredPosition = new Vector2(centerX, 0);
+            buttonRect.sizeDelta = new Vector2(width, panel.rect.height);
             var image = buttonObject.GetComponent<Image>();
             image.color = new Color(0.07f, 0.18f, 0.23f, 1);
             var button = buttonObject.GetComponent<Button>();
@@ -183,21 +209,13 @@ namespace DanceLearning.Editor
 
             var label = new GameObject("Label", typeof(RectTransform), typeof(Text));
             FitToParent(label.GetComponent<RectTransform>(), button.transform);
-            var text = label.GetComponent<Text>();
+            text = label.GetComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.text = "Play  (A)";
+            text.text = caption;
             text.fontSize = 30;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
             text.raycastTarget = false;
-
-            // 別の入力モジュールがある場合は既存のEventSystemを使う。
-            if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() == null)
-            {
-                var eventSystem = new GameObject("Playback Event System", typeof(EventSystem),
-                    typeof(InputSystemUIInputModule));
-                eventSystem.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
-            }
 
             return button;
         }
