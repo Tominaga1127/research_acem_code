@@ -20,7 +20,10 @@ namespace DanceLearning.Tests
             yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
             var playback = Object.FindAnyObjectByType<DancePlayback>();
             Assert.That(playback, Is.Not.Null);
-            var eyes = playback.GetComponentsInChildren<Transform>().Single(item => item.name == "Eyes");
+            // EditorはAnimatorなしでも姿勢を適用できるため、Playerに必要な構成を明示的に確認する。
+            var avatar = playback.transform.GetChild(0);
+            Assert.That(avatar.GetComponent<Animator>(), Is.Not.Null);
+            var eyes = avatar.GetComponentsInChildren<Transform>().Single(item => item.name == "Eyes");
             var button = Object.FindAnyObjectByType<Button>();
             var cameras = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
             var camera = cameras.Single(item => item.isActiveAndEnabled && item.CompareTag("MainCamera"));

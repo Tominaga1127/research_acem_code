@@ -51,6 +51,12 @@ namespace DanceLearning.Editor
             var session = new GameObject(SessionName);
             var avatar = (GameObject)PrefabUtility.InstantiatePrefab(model, session.transform);
 
+            // Playerでは非Legacyクリップの姿勢を適用するため、FBXのルートにAnimatorが必要。
+            if (!avatar.TryGetComponent<Animator>(out var animator))
+                animator = avatar.AddComponent<Animator>();
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
             var head = FindBone(avatar, "head");
             var foot = FindBone(avatar, "l_foot");
             var toe = FindBone(avatar, "l_toes");
