@@ -1248,7 +1248,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: DanceLearning.Playback::DanceLearning.DancePlayback
   avatar: {fileID: 919132148720740861}
-  clip: {fileID: 1827226128182048838, guid: 502c2c65fda397b4cafede78fe38c504, type: 3}
+  clip: {fileID: 1827226128182048838, guid: 77b4d8046f2ed7744a00f352be626abd, type: 3}
   eyes: {fileID: 2123266374}
   xrOrigin: {fileID: 570532452}
   viewCamera: {fileID: 1652977127}
