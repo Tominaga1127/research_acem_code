@@ -13,6 +13,9 @@ namespace DanceLearning
     [DefaultExecutionOrder(100)]
     public sealed class DancePlayback : MonoBehaviour
     {
+        private const float ThirdPersonAimBelowHead = 0.75f;
+        private const float ThirdPersonLookLimit = 8f;
+
         [SerializeField] private GameObject avatar;
         [SerializeField] private AnimationClip clip;
         [SerializeField] private Transform eyes;
@@ -21,14 +24,14 @@ namespace DanceLearning
         [SerializeField] private Button playButton;
         [SerializeField] private Button viewpointButton;
         [SerializeField] private Text viewpointLabel;
-        [SerializeField, Min(0)] private float thirdPersonDistance = 0.65f;
+        [SerializeField, Min(0)] private float thirdPersonDistance = 2.8f;
         [SerializeField, Min(0)] private float thirdPersonHeight = 0.25f;
 
         private float elapsed;
         private bool primaryButtonWasPressed;
         private bool secondaryButtonWasPressed;
         private bool isThirdPerson;
-        private Vector3 avatarHeading = Vector3.forward;
+        private Vector3 thirdPersonHeading;
 #if UNITY_EDITOR
         private UniversalAdditionalCameraData cameraData;
         private bool xrRenderingEnabled;
@@ -45,6 +48,8 @@ namespace DanceLearning
             UpdateEditorDisplay();
 #endif
             Application.onBeforeRender += AlignBeforeRender;
+            // 再生オブジェクトの向きから、三人称カメラを置く水平軸を固定する。
+            thirdPersonHeading = Quaternion.Euler(0, transform.eulerAngles.y, 0) * Vector3.forward;
             ApplyPose(0);
             playButton.gameObject.SetActive(true);
             FollowAvatar();
@@ -143,18 +148,19 @@ namespace DanceLearning
         /// <summary>視点に応じてXR Originを調整し、HMDの並進を相殺する。</summary>
         private void FollowAvatar()
         {
-            var heading = Vector3.ProjectOnPlane(eyes.forward, Vector3.up);
-            // 真上・真下を向いた瞬間は直前の水平向きを保つ。
-            if (heading.sqrMagnitude > 0.0001f)
-                avatarHeading = heading.normalized;
-
             var targetPosition = eyes.position;
             if (isThirdPerson)
             {
-                // 頭の向きは後方位置の計算にだけ使い、カメラの回転はHMDの追跡に任せる。
-                targetPosition = eyes.parent.position - avatarHeading * thirdPersonDistance +
-                    Vector3.up * thirdPersonHeight;
-                xrOrigin.rotation = Quaternion.identity;
+                // 頭の付け根の位置に追従し、首が回ってもカメラのオフセットは回さない。
+                var headPosition = eyes.parent.position;
+                targetPosition = headPosition - thirdPersonHeading * thirdPersonDistance + Vector3.up * thirdPersonHeight;
+                var bodyCenter = headPosition - Vector3.up * ThirdPersonAimBelowHead;
+                var framingRotation = Quaternion.LookRotation(bodyCenter - targetPosition);
+
+                // HMDの回転は全身を画面内に収めるための範囲に制限する。
+                var trackedRotation = Quaternion.Inverse(xrOrigin.rotation) * viewCamera.transform.rotation;
+                var lookRotation = Quaternion.RotateTowards(Quaternion.identity, trackedRotation, ThirdPersonLookLimit);
+                xrOrigin.rotation = framingRotation * lookRotation * Quaternion.Inverse(trackedRotation);
             }
             else
             {

@@ -104,19 +104,29 @@ namespace DanceLearning.Tests
             eyes.rotation = Quaternion.Euler(25, 60, -30);
             yield return new WaitForSeconds(0.1f);
             AssertFirstPersonPose(camera, eyes, hmdRotation);
+            ClickButton(viewpointButton, camera);
+            var initialPosition = camera.transform.position;
+            var initialRotation = camera.transform.rotation;
+            // 頭の位置を保ったまま大きく回転させ、三人称の位置・向きが変わらないことを確かめる。
+            eyes.parent.rotation = Quaternion.Euler(45, 170, 25) * eyes.parent.rotation;
+            yield return null;
+            Assert.That(Vector3.Distance(camera.transform.position, initialPosition), Is.LessThan(0.001f));
+            Assert.That(Quaternion.Angle(camera.transform.rotation, initialRotation), Is.LessThan(0.1f));
+            ClickButton(viewpointButton, camera);
+
             ClickButton(playButton, camera);
             yield return null;
             ClickButton(viewpointButton, camera);
             Assert.That(playback.IsPlaying, Is.True);
             Assert.That(label.text, Is.EqualTo("Third Person  (B)"));
-            AssertThirdPersonPose(camera, eyes, hmdRotation);
+            AssertThirdPersonPose(camera, eyes, playback.transform.forward, 8f);
 
             var cameraPosition = camera.transform.position;
-            hmdRotation = Quaternion.Euler(-8, -35, 14);
+            hmdRotation = Quaternion.Euler(2, -3, 1);
             camera.transform.SetLocalPositionAndRotation(new Vector3(-0.1f, 1.7f, 0.25f), hmdRotation);
             yield return new WaitForSeconds(0.3f);
             Assert.That(Vector3.Distance(camera.transform.position, cameraPosition), Is.GreaterThan(0.001f));
-            AssertThirdPersonPose(camera, eyes, hmdRotation);
+            AssertThirdPersonPose(camera, eyes, playback.transform.forward, Quaternion.Angle(Quaternion.identity, hmdRotation));
 
             var eyesBeforeSwitch = eyes.position;
             ClickButton(viewpointButton, camera);
@@ -124,6 +134,41 @@ namespace DanceLearning.Tests
             Assert.That(label.text, Is.EqualTo("First Person  (B)"));
             Assert.That(eyes.position, Is.EqualTo(eyesBeforeSwitch));
             AssertFirstPersonPose(camera, eyes, hmdRotation);
+        }
+
+        /// <summary>収録全体でアバターの表示範囲が画面内に収まることを確認する。</summary>
+        [UnityTest]
+        public IEnumerator ThirdPersonKeepsAvatarInFrameThroughoutRecording()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            var camera = Camera.main;
+            camera.GetComponent<TrackedPoseDriver>().enabled = false;
+            var renderers = playback.GetComponentsInChildren<MeshRenderer>();
+            playback.ToggleViewpoint();
+            playback.PlayFromStart();
+
+            var deadline = Time.realtimeSinceStartup + 25;
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                Time.timeScale = 5;
+                // 大きく見回すHMD入力も与え、許容範囲の端でアバターが収まることを確認する。
+                while (playback.IsPlaying && Time.realtimeSinceStartup < deadline)
+                {
+                    camera.transform.localRotation = Time.frameCount % 2 == 0
+                        ? Quaternion.Euler(65, 0, 0)
+                        : Quaternion.Euler(-65, 0, 0);
+                    yield return null;
+                    AssertAvatarInFrame(camera, renderers);
+                }
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+
+            Assert.That(playback.IsPlaying, Is.False);
         }
 
         /// <summary>Gameビュー上でボタンにヒットすることを確かめ、クリックを送る。</summary>
@@ -140,13 +185,34 @@ namespace DanceLearning.Tests
             ExecuteEvents.Execute(button.gameObject, pointer, ExecuteEvents.pointerClickHandler);
         }
 
-        /// <summary>頭からのオフセットが保たれ、カメラがHMDの回転に一致することを確かめる。</summary>
-        private static void AssertThirdPersonPose(Camera camera, Transform eyes, Quaternion hmdRotation)
+        /// <summary>三人称の固定オフセットと、画角内でのHMD回転量を確認する。</summary>
+        private static void AssertThirdPersonPose(Camera camera, Transform eyes, Vector3 heading, float lookAngle)
         {
-            var heading = Vector3.ProjectOnPlane(eyes.forward, Vector3.up).normalized;
-            var target = eyes.parent.position - heading * 0.65f + Vector3.up * 0.25f;
+            var target = eyes.parent.position - heading * 2.8f + Vector3.up * 0.25f;
+            var framingRotation = Quaternion.LookRotation(eyes.parent.position - Vector3.up * 0.75f - target);
             Assert.That(Vector3.Distance(camera.transform.position, target), Is.LessThan(0.001f));
-            Assert.That(Quaternion.Angle(camera.transform.rotation, hmdRotation), Is.LessThan(0.1f));
+            Assert.That(Quaternion.Angle(camera.transform.rotation, framingRotation), Is.EqualTo(lookAngle).Within(0.1f));
+        }
+
+        /// <summary>各メッシュを囲むボックスの8頂点を画面座標に変換して、表示範囲を確認する。</summary>
+        private static void AssertAvatarInFrame(Camera camera, MeshRenderer[] renderers)
+        {
+            foreach (var renderer in renderers)
+            {
+                var bounds = renderer.bounds;
+                for (var corner = 0; corner < 8; corner++)
+                {
+                    var point = new Vector3((corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                        (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                        (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
+                    var viewport = camera.WorldToViewportPoint(point);
+                    if (viewport.z < camera.nearClipPlane || viewport.x < 0 || viewport.x > 1 ||
+                        viewport.y < 0 || viewport.y > 1)
+                    {
+                        Assert.Fail($"{renderer.name} is outside the viewport at frame {Time.frameCount}: {viewport}.");
+                    }
+                }
+            }
         }
 
         /// <summary>目の位置に固定し、ピッチ・ロールを含む目の回転にHMDの回転を重ねることを確認する。</summary>

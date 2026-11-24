@@ -2996,7 +2996,7 @@ MonoBehaviour:
   playButton: {fileID: 800737931}
   viewpointButton: {fileID: 800737936}
   viewpointLabel: {fileID: 800737942}
-  thirdPersonDistance: 0.65
+  thirdPersonDistance: 2.8
   thirdPersonHeight: 0.25
 --- !u!4 &1041444371
 Transform:
