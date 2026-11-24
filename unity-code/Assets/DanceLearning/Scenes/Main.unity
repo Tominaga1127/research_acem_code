@@ -1257,6 +1257,8 @@ MonoBehaviour:
   viewpointLabel: {fileID: 800737942}
   thirdPersonDistance: 2.8
   thirdPersonHeight: 0.25
+  studio: {fileID: 3786946032446407429}
+  mirrorMarkerMaterial: {fileID: 2100000, guid: 23ca2d6009823bb4ebaed2ae7b4fcd25, type: 2}
 --- !u!4 &1041444371
 Transform:
   m_ObjectHideFlags: 0
@@ -2273,6 +2275,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 0634e2d30af5a9a4a8790a31ac174ab1, type: 3}
+--- !u!4 &3786946032446407429 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8142563181548552163, guid: 0634e2d30af5a9a4a8790a31ac174ab1, type: 3}
+  m_PrefabInstance: {fileID: 3786946032446407428}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

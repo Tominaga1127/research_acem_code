@@ -10,7 +10,7 @@ using UnityEngine.UI;
 
 namespace DanceLearning.Tests
 {
-    /// <summary>Mainを実際に再生して、再生操作と一人称・三人称の視点切り替えを確認する。</summary>
+    /// <summary>Mainの再生操作、鏡像、三つの視点を確認する。</summary>
     public sealed class DancePlaybackTests
     {
         /// <summary>操作前は静止し、ボタンを押すとモーションが進み、目の位置がカメラに反映される。</summary>
@@ -88,7 +88,8 @@ namespace DanceLearning.Tests
         {
             yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
             var playback = Object.FindAnyObjectByType<DancePlayback>();
-            var eyes = playback.GetComponentsInChildren<Transform>().Single(item => item.name == "Eyes");
+            var eyes = playback.transform.GetChild(0).GetComponentsInChildren<Transform>()
+                .Single(item => item.name == "Eyes");
             var camera = Camera.main;
             var playButton = GameObject.Find("Play Recording").GetComponent<Button>();
             var viewpointButton = GameObject.Find("Switch Viewpoint").GetComponent<Button>();
@@ -113,6 +114,8 @@ namespace DanceLearning.Tests
             Assert.That(Vector3.Distance(camera.transform.position, initialPosition), Is.LessThan(0.001f));
             Assert.That(Quaternion.Angle(camera.transform.rotation, initialRotation), Is.LessThan(0.1f));
             ClickButton(viewpointButton, camera);
+            Assert.That(label.text, Is.EqualTo("Mirror  (B)"));
+            ClickButton(viewpointButton, camera);
 
             ClickButton(playButton, camera);
             yield return null;
@@ -131,6 +134,8 @@ namespace DanceLearning.Tests
             var eyesBeforeSwitch = eyes.position;
             ClickButton(viewpointButton, camera);
             Assert.That(playback.IsPlaying, Is.True);
+            Assert.That(label.text, Is.EqualTo("Mirror  (B)"));
+            ClickButton(viewpointButton, camera);
             Assert.That(label.text, Is.EqualTo("First Person  (B)"));
             Assert.That(eyes.position, Is.EqualTo(eyesBeforeSwitch));
             AssertFirstPersonPose(camera, eyes, hmdRotation);
@@ -144,7 +149,7 @@ namespace DanceLearning.Tests
             var playback = Object.FindAnyObjectByType<DancePlayback>();
             var camera = Camera.main;
             camera.GetComponent<TrackedPoseDriver>().enabled = false;
-            var renderers = playback.GetComponentsInChildren<MeshRenderer>();
+            var renderers = playback.transform.GetChild(0).GetComponentsInChildren<MeshRenderer>();
             playback.ToggleViewpoint();
             playback.PlayFromStart();
 
@@ -169,6 +174,127 @@ namespace DanceLearning.Tests
             }
 
             Assert.That(playback.IsPlaying, Is.False);
+        }
+
+        /// <summary>鏡面と枠の寸法、および枠から天井までを覆う白い壁を確認する。</summary>
+        [UnityTest]
+        public IEnumerator MirrorMarkerUsesStudioCenterAndAvatarHeight()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
+            var studio = GameObject.Find("Dance Studio").transform;
+            var floor = studio.Find("Floor").GetComponent<BoxCollider>().bounds;
+            var leftWall = studio.Find("Walls/Left Wall").GetComponent<BoxCollider>().bounds;
+            var rightWall = studio.Find("Walls/Right Wall").GetComponent<BoxCollider>().bounds;
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            var plane = playback.transform.Find("Mirror Plane");
+            var bottom = plane.Find("Floor Marker").GetComponent<MeshRenderer>().bounds;
+            var top = plane.Find("Top Marker").GetComponent<MeshRenderer>().bounds;
+            var center = new Vector3(floor.center.x, floor.max.y, floor.center.z);
+            Assert.That(Vector3.Distance(plane.position, center), Is.LessThan(0.001f));
+            Assert.That(bottom.min.x, Is.EqualTo(leftWall.max.x).Within(0.001f));
+            Assert.That(bottom.max.x, Is.EqualTo(rightWall.min.x).Within(0.001f));
+            Assert.That(bottom.min.y, Is.EqualTo(floor.max.y).Within(0.001f));
+            var upperWall = plane.Find("Wall Above Mirror").GetComponent<MeshRenderer>();
+            var frontWall = studio.Find("Walls/Front Wall").GetComponent<MeshRenderer>();
+            var ceiling = studio.Find("Ceiling").GetComponent<BoxCollider>().bounds;
+            Assert.That(upperWall.sharedMaterial, Is.SameAs(frontWall.sharedMaterial));
+            Assert.That(upperWall.bounds.min.y, Is.EqualTo(top.max.y).Within(0.001f));
+            Assert.That(upperWall.bounds.max.y, Is.EqualTo(ceiling.min.y).Within(0.001f));
+            Assert.That(upperWall.bounds.min.x, Is.EqualTo(leftWall.max.x).Within(0.001f));
+            Assert.That(upperWall.bounds.max.x, Is.EqualTo(rightWall.min.x).Within(0.001f));
+
+#if UNITY_EDITOR
+            // 未再生のプレハブを独立に測り、枠の外寸に30 cmが加わっていることを確認する。
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab");
+            var model = Object.Instantiate(prefab);
+            var modelRenderers = model.GetComponentsInChildren<MeshRenderer>();
+            var modelHeight = modelRenderers.Max(item => item.bounds.max.y) -
+                modelRenderers.Min(item => item.bounds.min.y);
+            Object.Destroy(model);
+            Assert.That(top.max.y - bottom.min.y, Is.EqualTo(modelHeight + 0.30f).Within(0.001f));
+#endif
+        }
+
+        /// <summary>鏡像の移動と骨の向き、頭の位置とHMD姿勢から決まる鏡視点を確認する。</summary>
+        [UnityTest]
+        public IEnumerator MirrorReflectsRecordingAndFollowsHeadWithoutItsRotation()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            var source = playback.transform.GetChild(0);
+            var plane = playback.transform.Find("Mirror Plane");
+            var reflected = plane.Find("Reflection Space/Reflected Playback Space/Reflected Avatar");
+            Assert.That(plane.Find("Floor Marker").GetComponent<MeshRenderer>().enabled, Is.True);
+            var sourceBones = source.GetComponentsInChildren<Transform>();
+            var reflectedBones = reflected.GetComponentsInChildren<Transform>();
+            var head = sourceBones.Single(bone => bone.name == "Eyes").parent;
+            var depth = plane.InverseTransformPoint(head.position).z;
+            Assert.That(depth, Is.LessThan(0));
+
+            var camera = Camera.main;
+            camera.GetComponent<TrackedPoseDriver>().enabled = false;
+            var hmdRotation = Quaternion.Euler(16, -27, 19);
+            camera.transform.SetLocalPositionAndRotation(new Vector3(0.2f, 1.6f, 0.3f), hmdRotation);
+            // XR Originが初期化時の床オフセットを書き終えてから視点を切り替える。
+            yield return new WaitForSeconds(0.1f);
+            playback.ToggleViewpoint();
+            playback.ToggleViewpoint();
+            playback.PlayFromStart();
+            var start = head.position;
+            var maxHeadDepth = float.NegativeInfinity;
+            var moved = false;
+            var deadline = Time.realtimeSinceStartup + 25f;
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                Time.timeScale = 5;
+                // 全収録にわたり、各ボーンの位置と向きが鏡面に対して対称であることを確認する。
+                while (playback.IsPlaying && Time.realtimeSinceStartup < deadline)
+                {
+                    yield return null;
+                    for (var index = 0; index < sourceBones.Length; index++)
+                    {
+                        var bone = sourceBones[index];
+                        var mirrorBone = reflectedBones[index];
+                        var point = plane.InverseTransformPoint(bone.position);
+                        point.z = -point.z;
+                        Assert.That(Vector3.Distance(plane.TransformPoint(point), mirrorBone.position),
+                            Is.LessThan(0.001f), bone.name);
+                        var axis = plane.InverseTransformDirection(bone.localToWorldMatrix.MultiplyVector(Vector3.forward));
+                        axis.z = -axis.z;
+                        var mirrorAxis = mirrorBone.localToWorldMatrix.MultiplyVector(Vector3.forward);
+                        Assert.That(Vector3.Distance(plane.TransformDirection(axis), mirrorAxis), Is.LessThan(0.001f),
+                            bone.name);
+                    }
+
+                    var headInPlane = plane.InverseTransformPoint(head.position);
+                    maxHeadDepth = Mathf.Max(maxHeadDepth, headInPlane.z);
+                    moved |= Vector3.Distance(start, head.position) > 0.01f;
+                    headInPlane.z = depth;
+                    var target = plane.TransformPoint(headInPlane);
+                    Assert.That(Vector3.Distance(camera.transform.position, target), Is.LessThan(0.001f),
+                        $"Camera: {camera.transform.position:F4}, target: {target:F4}, frame: {Time.frameCount}");
+                    Assert.That(Quaternion.Angle(camera.transform.rotation, plane.rotation * hmdRotation),
+                        Is.LessThan(0.1f));
+                }
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+
+            Assert.That(playback.IsPlaying, Is.False);
+            Assert.That(moved, Is.True);
+            Assert.That(maxHeadDepth, Is.LessThan(0f), "The recording should stay in front of the mirror.");
+            var cameraPosition = camera.transform.position;
+            head.rotation = Quaternion.Euler(45, 100, -32);
+            yield return null;
+            Assert.That(Vector3.Distance(camera.transform.position, cameraPosition), Is.LessThan(0.001f));
+            head.position += plane.right * 0.3f + plane.up * 0.2f + plane.forward * 0.4f;
+            yield return null;
+            var expected = cameraPosition + plane.right * 0.3f + plane.up * 0.2f;
+            Assert.That(Vector3.Distance(camera.transform.position, expected), Is.LessThan(0.001f));
         }
 
         /// <summary>Gameビュー上でボタンにヒットすることを確かめ、クリックを送る。</summary>

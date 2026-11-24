@@ -18,6 +18,7 @@ namespace DanceLearning.Editor
         private const string ScenePath = "Assets/DanceLearning/Scenes/Main.unity";
         private const string AvatarPath = "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab";
         private const string RecordingPath = "Assets/DanceLearning/Animations/MCPM_20261117_140210_refined.fbx";
+        private const string MirrorMarkerMaterialPath = "Assets/DanceLearning/Materials/Studio/Dark Oak Trim.mat";
         private const string SessionName = "Dance Playback";
 
         /// <summary>収録クリップ、シーンの既存XR Origin、操作ボタンを接続して保存する。</summary>
@@ -40,6 +41,9 @@ namespace DanceLearning.Editor
                 .Single(item => !item.name.StartsWith("__preview__", StringComparison.Ordinal));
             var origin = GameObject.Find("XR Origin (VR)").GetComponent<XROrigin>();
             var camera = origin.Camera;
+            var studio = GameObject.Find("Dance Studio");
+            if (studio == null)
+                throw new InvalidOperationException("Dance Studio is required to place the mirror.");
 
             // 既存の予備カメラを止め、ユーザーに表示する視点をXRカメラに統一する。
             foreach (var root in scene.GetRootGameObjects())
@@ -73,6 +77,10 @@ namespace DanceLearning.Editor
             serialized.FindProperty("playButton").objectReferenceValue = playButton;
             serialized.FindProperty("viewpointButton").objectReferenceValue = viewpointButton;
             serialized.FindProperty("viewpointLabel").objectReferenceValue = viewpointLabel;
+            // 鏡面と枠の基準にスタジオを参照し、既存のステージ用マテリアルを使う。
+            serialized.FindProperty("studio").objectReferenceValue = studio.transform;
+            serialized.FindProperty("mirrorMarkerMaterial").objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<Material>(MirrorMarkerMaterialPath);
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene);
