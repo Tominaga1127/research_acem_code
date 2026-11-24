@@ -1,15 +1,41 @@
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace DanceLearning.Tests
 {
     /// <summary>
-    /// Main.unityのスタジオ配置とマテリアルを検証する、Unity Test FrameworkのEditModeテスト。
+    /// Main.unityのスタジオ配置、マテリアル、アバター設定を検証する、Unity Test FrameworkのEditModeテスト。
     /// </summary>
     public class DanceStudioTests
     {
+        /// <summary>Mainのアバターが独立したプレハブであり、収録クリップを適用できることを確認する。</summary>
+        [Test]
+        public void MainUsesIndependentAvatarPrefabWithCompatibleRecording()
+        {
+            const string AvatarPath = "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab";
+            EditorSceneManager.OpenScene("Assets/DanceLearning/Scenes/Main.unity");
+            var session = GameObject.Find("Dance Playback");
+            Assert.That(session, Is.Not.Null);
+            var playback = new SerializedObject(session.GetComponent("DancePlayback"));
+            var avatar = (GameObject)playback.FindProperty("avatar").objectReferenceValue;
+            var clip = (AnimationClip)playback.FindProperty("clip").objectReferenceValue;
+            var eyes = (Transform)playback.FindProperty("eyes").objectReferenceValue;
+
+            Assert.That(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(avatar), Is.EqualTo(AvatarPath));
+            Assert.That(AssetDatabase.GetDependencies(AvatarPath).Any(path => path.EndsWith(".fbx")), Is.False);
+            Assert.That(eyes.IsChildOf(avatar.transform), Is.True);
+            Assert.That(clip, Is.Not.Null);
+            var boneBindings = AnimationUtility.GetCurveBindings(clip)
+                .Where(binding => binding.type == typeof(Transform) && binding.path.Length > 0).ToArray();
+            Assert.That(boneBindings, Is.Not.Empty);
+            // Genericクリップが参照する全ボーンのパスを、配置済みアバターの階層と照合する。
+            foreach (var path in boneBindings.Select(binding => binding.path).Distinct())
+                Assert.That(avatar.transform.Find(path), Is.Not.Null, $"Missing animated bone: {path}");
+        }
+
         /// <summary>XR Originが室内にあり、床の高さと四方向の壁の当たり判定が正しいことを確認する。</summary>
         [Test]
         public void MainEnclosesXrOriginWithFloorAndFourWalls()

@@ -8,7 +8,7 @@ using UnityEngine.Rendering.Universal;
 namespace DanceLearning
 {
     /// <summary>
-    /// FBXのモーションを再生し、操作に応じてXRカメラを一人称と三人称に切り替える。
+    /// 配置済みのアバターにクリップを適用し、操作に応じてXRカメラを一人称と三人称に切り替える。
     /// </summary>
     [DefaultExecutionOrder(100)]
     public sealed class DancePlayback : MonoBehaviour
@@ -16,8 +16,8 @@ namespace DanceLearning
         private const float ThirdPersonAimBelowHead = 0.75f;
         private const float ThirdPersonLookLimit = 8f;
 
-        [SerializeField] private GameObject avatar;
-        [SerializeField] private AnimationClip clip;
+        [SerializeField, Tooltip("Animator を持つ配置済みアバターのルート")] private GameObject avatar;
+        [SerializeField, Tooltip("アバターのボーン階層に対応する AnimationClip")] private AnimationClip clip;
         [SerializeField] private Transform eyes;
         [SerializeField] private Transform xrOrigin;
         [SerializeField] private Camera viewCamera;

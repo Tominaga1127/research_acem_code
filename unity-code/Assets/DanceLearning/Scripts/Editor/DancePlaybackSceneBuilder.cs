@@ -7,16 +7,16 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.XR;
-using UnityEngine.Rendering;
 using UnityEngine.UI;
 using Unity.XR.CoreUtils;
 
 namespace DanceLearning.Editor
 {
-    /// <summary>Mainに収録済みFBXと再生・視点操作のUIを配置し、アバターの目の位置を設定する。</summary>
+    /// <summary>Mainにアバタープレハブを配置し、収録クリップと再生・視点操作のUIを接続する。</summary>
     public static class DancePlaybackSceneBuilder
     {
         private const string ScenePath = "Assets/DanceLearning/Scenes/Main.unity";
+        private const string AvatarPath = "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab";
         private const string RecordingPath = "Assets/DanceLearning/Animations/MCPM_20261117_140210_refined.fbx";
         private const string SessionName = "Dance Playback";
 
@@ -33,7 +33,9 @@ namespace DanceLearning.Editor
             if (GameObject.Find(SessionName) != null)
                 throw new InvalidOperationException("Dance Playback is already in Main.");
 
-            var model = AssetDatabase.LoadAssetAtPath<GameObject>(RecordingPath);
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(AvatarPath);
+            if (model == null)
+                throw new InvalidOperationException("The default avatar prefab is missing.");
             var clip = AssetDatabase.LoadAllAssetsAtPath(RecordingPath).OfType<AnimationClip>()
                 .Single(item => !item.name.StartsWith("__preview__", StringComparison.Ordinal));
             var origin = GameObject.Find("XR Origin (VR)").GetComponent<XROrigin>();
@@ -51,24 +53,8 @@ namespace DanceLearning.Editor
             var session = new GameObject(SessionName);
             var avatar = (GameObject)PrefabUtility.InstantiatePrefab(model, session.transform);
 
-            // Playerでは非Legacyクリップの姿勢を適用するため、FBXのルートにAnimatorが必要。
-            if (!avatar.TryGetComponent<Animator>(out var animator))
-                animator = avatar.AddComponent<Animator>();
-            animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-
-            var head = FindBone(avatar, "head");
-            var foot = FindBone(avatar, "l_foot");
-            var toe = FindBone(avatar, "l_toes");
-            var forward = Vector3.ProjectOnPlane(toe.position - foot.position, Vector3.up).normalized;
-            var eyes = new GameObject("Eyes").transform;
-            eyes.SetParent(head);
-            // このFBXには目のボーンがないため、頭の付け根から上5.5cm、前9cmを両目の中心とする。
-            eyes.SetPositionAndRotation(head.position + Vector3.up * 0.055f + forward * 0.09f,
-                Quaternion.LookRotation(forward));
-
-            // メッシュのない収録なので、各ボーンに簡易形状を取り付けて身体の動きを表示する。
-            AddBody(avatar, head);
+            // 視点の基準はアバター側で設定した Eyes を使用する。
+            var eyes = FindBone(avatar, "Eyes");
             session.transform.position = StartingPlacement(model, clip, origin.transform.position);
 
             var playback = session.AddComponent<DancePlayback>();
@@ -116,53 +102,6 @@ namespace DanceLearning.Editor
                 // 位置合わせに使ったモデルはシーンに残さない。
                 UnityEngine.Object.DestroyImmediate(preview);
             }
-        }
-
-        /// <summary>骨の位置関係がわかるよう、ボーン間をカプセルと手足の先端で描く。</summary>
-        private static void AddBody(GameObject avatar, Transform head)
-        {
-            var material = AssetDatabase.LoadAssetAtPath<Material>(
-                "Assets/DanceLearning/Materials/Studio/Dark Oak Trim.mat");
-            // 追加する形状を探索対象に含めないよう、加工前のボーン一覧を取得する。
-            foreach (var bone in avatar.GetComponentsInChildren<Transform>())
-            {
-                var parent = bone.parent;
-                if (parent == null || parent == avatar.transform || bone.name.EndsWith("_End", StringComparison.Ordinal))
-                    continue;
-                var offset = bone.position - parent.position;
-                if (offset.sqrMagnitude < 0.000001f || parent == head)
-                    continue;
-
-                // 近い位置から見たときに顔が視界を塞がないよう、頭部は影だけにする。
-                var capsule = CreateBodyPart(parent, bone.name + " Segment", material, PrimitiveType.Capsule);
-                capsule.transform.SetPositionAndRotation(parent.position + offset * 0.5f,
-                    Quaternion.FromToRotation(Vector3.up, offset));
-                var width = bone.name.Contains("torso") ? 0.20f : 0.055f;
-                capsule.transform.localScale = new Vector3(width, offset.magnitude * 0.5f + width * 0.25f, width);
-            }
-
-            var headShape = CreateBodyPart(head, "Head Shape", material, PrimitiveType.Sphere);
-            headShape.transform.position = head.position + Vector3.up * 0.07f;
-            headShape.transform.localScale = new Vector3(0.15f, 0.19f, 0.15f);
-            headShape.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.ShadowsOnly;
-
-            foreach (var name in new[] { "l_hand", "r_hand", "l_toes", "r_toes" })
-            {
-                var bone = FindBone(avatar, name);
-                var tip = CreateBodyPart(bone, name + " Shape", material, PrimitiveType.Sphere);
-                tip.transform.localScale = Vector3.one * 0.05f;
-            }
-        }
-
-        /// <summary>描画専用の形状を作り、ボーンの子にして姿勢と一緒に動かす。</summary>
-        private static GameObject CreateBodyPart(Transform parent, string name, Material material, PrimitiveType type)
-        {
-            var shape = GameObject.CreatePrimitive(type);
-            shape.name = name;
-            shape.transform.SetParent(parent, false);
-            shape.GetComponent<Renderer>().sharedMaterial = material;
-            UnityEngine.Object.DestroyImmediate(shape.GetComponent<Collider>());
-            return shape;
         }
 
         /// <summary>XRカメラの前に、マウスで操作できるワールド空間のパネルを作る。</summary>
