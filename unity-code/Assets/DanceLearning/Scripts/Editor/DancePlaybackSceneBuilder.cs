@@ -12,14 +12,17 @@ using Unity.XR.CoreUtils;
 
 namespace DanceLearning.Editor
 {
-    /// <summary>Mainにアバタープレハブを配置し、収録クリップと再生・視点操作のUIを接続する。</summary>
+    /// <summary>Mainにアバタープレハブを配置し、収録クリップと再生・視点・床面操作のUIを接続する。</summary>
     public static class DancePlaybackSceneBuilder
     {
         private const string ScenePath = "Assets/DanceLearning/Scenes/Main.unity";
         private const string AvatarPath = "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab";
         private const string RecordingPath = "Assets/DanceLearning/Animations/MCPM_20261117_140210_refined.fbx";
         private const string MirrorMarkerMaterialPath = "Assets/DanceLearning/Materials/Studio/Dark Oak Trim.mat";
+        private const string OakFloorMaterialPath = "Assets/DanceLearning/Materials/Studio/Oak Floor.mat";
         private const string SessionName = "Dance Playback";
+        private const float ButtonHeight = 62;
+        private const float ButtonRowOffset = 38;
 
         /// <summary>収録クリップ、シーンの既存XR Origin、操作ボタンを接続して保存する。</summary>
         [MenuItem("Dance Learning/Place Recording In Main")]
@@ -63,8 +66,10 @@ namespace DanceLearning.Editor
 
             var playback = session.AddComponent<DancePlayback>();
             var panel = CreateControlPanel(camera);
-            var playButton = CreateButton(panel, "Play Recording", "Play  (A)", -146, 240, out _);
-            var viewpointButton = CreateButton(panel, "Switch Viewpoint", "First Person  (B)", 126, 280,
+            var playButton = CreateButton(panel, "Play Recording", "Play  (A)",
+                new Vector2(-146, ButtonRowOffset), 240, out _);
+            var viewpointButton = CreateButton(panel, "Switch Viewpoint", "First Person  (B)",
+                new Vector2(126, ButtonRowOffset), 280,
                 out var viewpointLabel);
             UnityEventTools.AddPersistentListener(playButton.onClick, playback.PlayFromStart);
             UnityEventTools.AddPersistentListener(viewpointButton.onClick, playback.ToggleViewpoint);
@@ -77,6 +82,7 @@ namespace DanceLearning.Editor
             serialized.FindProperty("playButton").objectReferenceValue = playButton;
             serialized.FindProperty("viewpointButton").objectReferenceValue = viewpointButton;
             serialized.FindProperty("viewpointLabel").objectReferenceValue = viewpointLabel;
+            ConfigureFloorControl(panel, playback, serialized);
             // 鏡面と枠の基準にスタジオを参照し、既存のステージ用マテリアルを使う。
             serialized.FindProperty("studio").objectReferenceValue = studio.transform;
             serialized.FindProperty("mirrorMarkerMaterial").objectReferenceValue =
@@ -112,16 +118,28 @@ namespace DanceLearning.Editor
             }
         }
 
+        /// <summary>既存のパネルに床面ボタンを追加し、木目と切り替え先の処理を接続する。</summary>
+        internal static void ConfigureFloorControl(RectTransform panel, DancePlayback playback, SerializedObject serialized)
+        {
+            var floorButton = CreateButton(panel, "Switch Floor", DancePlayback.CheckerFloorLabel,
+                new Vector2(126, -ButtonRowOffset), 280, out var floorLabel);
+            UnityEventTools.AddPersistentListener(floorButton.onClick, playback.ToggleFloor);
+            serialized.FindProperty("floorButton").objectReferenceValue = floorButton;
+            serialized.FindProperty("floorLabel").objectReferenceValue = floorLabel;
+            serialized.FindProperty("oakFloorMaterial").objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<Material>(OakFloorMaterialPath);
+        }
+
         /// <summary>XRカメラの視界の右上に、マウスで操作できるワールド空間のパネルを作る。</summary>
         private static RectTransform CreateControlPanel(Camera camera)
         {
             var panel = new GameObject("Playback UI", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             panel.transform.SetParent(camera.transform, false);
-            // 右上に寄せ、横並びのボタンが視界に収まるようにパネルを縮める。
-            panel.transform.localPosition = new Vector3(0.32f, 0.44f, 1.2f);
+            // 上段の従来位置を保ち、床面ボタンを置く下段の分だけパネルの中心を下げる。
+            panel.transform.localPosition = new Vector3(0.32f, 0.3906f, 1.2f);
             panel.transform.localScale = Vector3.one * 0.0013f;
             var rect = panel.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(532, 62);
+            rect.sizeDelta = new Vector2(532, ButtonHeight + 2 * ButtonRowOffset);
             var canvas = panel.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.worldCamera = camera;
@@ -138,15 +156,15 @@ namespace DanceLearning.Editor
         }
 
         /// <summary>パネル内の指定位置に、共通の配色と文字サイズで操作ボタンを作る。</summary>
-        private static Button CreateButton(RectTransform panel, string objectName, string caption, float centerX,
+        private static Button CreateButton(RectTransform panel, string objectName, string caption, Vector2 position,
             float width, out Text text)
         {
             var buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button));
             var buttonRect = buttonObject.GetComponent<RectTransform>();
             buttonRect.SetParent(panel, false);
             buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
-            buttonRect.anchoredPosition = new Vector2(centerX, 0);
-            buttonRect.sizeDelta = new Vector2(width, panel.rect.height);
+            buttonRect.anchoredPosition = position;
+            buttonRect.sizeDelta = new Vector2(width, ButtonHeight);
             var image = buttonObject.GetComponent<Image>();
             image.color = new Color(0.07f, 0.18f, 0.23f, 1);
             var button = buttonObject.GetComponent<Button>();

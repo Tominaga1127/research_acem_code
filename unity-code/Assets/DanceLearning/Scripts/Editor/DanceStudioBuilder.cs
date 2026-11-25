@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 namespace DanceLearning.Editor
 {
     /// <summary>
-    /// Main.unityに、XR Originを囲む床・四方の壁・天井を作成するエディター専用のファイル。
+    /// Main.unityに、XR Originを囲む市松模様の床・四方の壁・天井を作成するエディター専用のファイル。
     /// 形状やマテリアルをアセットとして保存するため、HMD実行時には生成処理が走らない。
     /// </summary>
     public static class DanceStudioBuilder
@@ -15,6 +15,7 @@ namespace DanceLearning.Editor
         private const string scenePath = "Assets/DanceLearning/Scenes/Main.unity";
         private const string materialPath = "Assets/DanceLearning/Materials/Studio";
         private const string prefabPath = "Assets/DanceLearning/Prefabs/Presentation/DanceStudio.prefab";
+        private const float RoomHeight = 4f;
 
         /// <summary>
         /// Unityのメニューからスタジオを作成し、プレハブ・シーン・確認用画像を保存する。
@@ -33,10 +34,10 @@ namespace DanceLearning.Editor
             Directory.CreateDirectory(materialPath);
             AssetDatabase.Refresh();
 
-            var floor = CreateMaterial("Oak Floor", new Color(0.82f, 0.64f, 0.40f), 0.25f);
-            floor.SetTexture("_BaseMap", CreateFloorTexture());
+            var oakFloor = CreateMaterial("Oak Floor", new Color(0.82f, 0.64f, 0.40f), 0.25f);
+            oakFloor.SetTexture("_BaseMap", CreateFloorTexture());
             // 木目画像を繰り返し、床全体に対する床板の大きさを調整する。
-            floor.SetTextureScale("_BaseMap", new Vector2(3, 4));
+            oakFloor.SetTextureScale("_BaseMap", new Vector2(3, 4));
             var wall = CreateMaterial("Warm Plaster", new Color(0.88f, 0.85f, 0.77f), 0.05f);
             var panel = CreateMaterial("Oak Wall Panels", new Color(0.66f, 0.49f, 0.30f), 0.12f);
             var trim = CreateMaterial("Dark Oak Trim", new Color(0.30f, 0.23f, 0.16f), 0.1f);
@@ -45,15 +46,17 @@ namespace DanceLearning.Editor
             // XR OriginのYを床面の高さとする。部屋の中心はOriginより前方に2mずらす。
             // 床の厚さを下側に設けることで、床の上面をOriginと同じ高さにそろえる。
             root.transform.position = origin.position + new Vector3(0, 0, 2);
-            Box(root.transform, "Floor", new Vector3(0, -0.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), floor);
-            // 天井の下面を床から4mにそろえ、壁の上端まで隙間なく覆う。
-            Box(root.transform, "Ceiling", new Vector3(0, 4.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), wall);
+            var floor = Box(root.transform, "Floor", new Vector3(0, -0.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), oakFloor);
+            ConfigureCheckerFloor(floor);
+            CreateCeiling(root.transform, wall);
             var walls = new GameObject("Walls").transform;
             walls.SetParent(root.transform, false);
-            Box(walls, "Front Wall", new Vector3(0, 2, 8.1f), new Vector3(12.4f, 4, 0.2f), wall);
-            Box(walls, "Back Wall", new Vector3(0, 2, -8.1f), new Vector3(12.4f, 4, 0.2f), wall);
-            Box(walls, "Left Wall", new Vector3(-6.1f, 2, 0), new Vector3(0.2f, 4, 16), wall);
-            Box(walls, "Right Wall", new Vector3(6.1f, 2, 0), new Vector3(0.2f, 4, 16), wall);
+            // 壁の下端を床面、上端を天井の下面にそろえる。
+            var wallCenterY = RoomHeight * 0.5f;
+            Box(walls, "Front Wall", new Vector3(0, wallCenterY, 8.1f), new Vector3(12.4f, RoomHeight, 0.2f), wall);
+            Box(walls, "Back Wall", new Vector3(0, wallCenterY, -8.1f), new Vector3(12.4f, RoomHeight, 0.2f), wall);
+            Box(walls, "Left Wall", new Vector3(-6.1f, wallCenterY, 0), new Vector3(0.2f, RoomHeight, 16), wall);
+            Box(walls, "Right Wall", new Vector3(6.1f, wallCenterY, 0), new Vector3(0.2f, RoomHeight, 16), wall);
 
             // 壁の内側は幅12m・奥行16m。腰壁の継ぎ目や巾木を距離の手掛かりにする。
             // sideを-1、+1の順に処理し、左右の壁と前後の壁に同じ装飾を配置する。
@@ -81,6 +84,14 @@ namespace DanceLearning.Editor
             RenderSettings.ambientLight = new Color(0.72f, 0.70f, 0.65f);
             // 作成したオブジェクトをプレハブ化し、Mainにはそのインスタンスを保存する。
             PrefabUtility.SaveAsPrefabAssetAndConnect(root, prefabPath, InteractionMode.AutomatedAction);
+            // スタジオを作り直した場合も、再生側が新しい床と鏡面の基準を参照するようにする。
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            if (playback != null)
+            {
+                var serialized = new SerializedObject(playback);
+                serialized.FindProperty("studio").objectReferenceValue = root.transform;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             CapturePreview(root.transform.position);
@@ -101,7 +112,7 @@ namespace DanceLearning.Editor
                 if (root.transform.Find("Ceiling") == null)
                 {
                     var wall = AssetDatabase.LoadAssetAtPath<Material>(materialPath + "/Warm Plaster.mat");
-                    Box(root.transform, "Ceiling", new Vector3(0, 4.1f, 0), new Vector3(12.4f, 0.2f, 16.4f), wall);
+                    CreateCeiling(root.transform, wall);
                     PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
                 }
             }
@@ -119,6 +130,30 @@ namespace DanceLearning.Editor
                 EditorSceneManager.SaveScene(scene);
                 CapturePreview(GameObject.Find("Dance Studio").transform.position);
             }
+        }
+
+        /// <summary>DanceStudioプレハブの天井を作り、下面を壁の上端にそろえる。</summary>
+        private static void CreateCeiling(Transform root, Material wall)
+        {
+            const float thickness = 0.2f;
+            Box(root, "Ceiling", new Vector3(0, RoomHeight + thickness * 0.5f, 0),
+                new Vector3(12.4f, thickness, 16.4f), wall);
+        }
+
+        /// <summary>50 cmのマスを2つ含む画像を床の各方向に1 m周期で並べ、中央をマスの境界にする。</summary>
+        internal static void ConfigureCheckerFloor(GameObject floor)
+        {
+            var size = floor.transform.lossyScale;
+            var repeats = new Vector2(size.x, size.z);
+            var material = CreateMaterial("Checker Floor", Color.white, 0.1f);
+            material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(materialPath + "/FloorChecker.png"));
+            material.SetTextureScale("_BaseMap", repeats);
+            material.SetTextureOffset("_BaseMap", -0.5f * repeats);
+            floor.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            // 床だけを静的バッチから外し、プレイヤーでマテリアルを交換できるようにする。
+            var flags = GameObjectUtility.GetStaticEditorFlags(floor);
+            GameObjectUtility.SetStaticEditorFlags(floor, flags & ~StaticEditorFlags.BatchingStatic);
         }
 
         /// <summary>
@@ -188,7 +223,7 @@ namespace DanceLearning.Editor
         /// 親を基準とした位置と大きさで直方体を作成し、共通マテリアルを割り当てる。
         /// colliderがtrueなら床・壁・天井の当たり判定を残し、falseなら装飾用として取り除く。
         /// </summary>
-        private static void Box(Transform parent, string name, Vector3 position, Vector3 scale, Material material, bool collider = true)
+        private static GameObject Box(Transform parent, string name, Vector3 position, Vector3 scale, Material material, bool collider = true)
         {
             var item = GameObject.CreatePrimitive(PrimitiveType.Cube);
             item.name = name;
@@ -202,6 +237,7 @@ namespace DanceLearning.Editor
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             // パネルや巾木などの装飾には当たり判定を持たせず、床・壁・天井で判定する。
             if (!collider) Object.DestroyImmediate(item.GetComponent<Collider>());
+            return item;
         }
 
         /// <summary>

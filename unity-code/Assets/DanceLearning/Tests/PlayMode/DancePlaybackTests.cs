@@ -10,10 +10,10 @@ using UnityEngine.UI;
 
 namespace DanceLearning.Tests
 {
-    /// <summary>Mainの再生操作、鏡像、三つの視点を確認する。</summary>
+    /// <summary>Mainの再生操作、鏡像、三つの視点、床面切り替えを確認する。</summary>
     public sealed class DancePlaybackTests
     {
-        /// <summary>操作パネルの中心が右上にあり、両ボタンがカメラの描画範囲に収まることを確認する。</summary>
+        /// <summary>操作パネルの中心が右上にあり、全ボタンがカメラの描画範囲に収まることを確認する。</summary>
         [UnityTest]
         public IEnumerator MainShowsPlaybackControlsInUpperRight()
         {
@@ -27,7 +27,7 @@ namespace DanceLearning.Tests
             Assert.That(center.y, Is.GreaterThan(0.5f));
 
             var corners = new Vector3[4];
-            // 両ボタンの四隅をViewport座標で確認し、画面端での見切れを検出する。
+            // 各ボタンの四隅をViewport座標で確認し、画面端での見切れを検出する。
             foreach (var button in panel.GetComponentsInChildren<Button>())
             {
                 ((RectTransform)button.transform).GetWorldCorners(corners);
@@ -38,6 +38,61 @@ namespace DanceLearning.Tests
                     Assert.That(point.y, Is.InRange(0.5f, 1f), button.name);
                 }
             }
+        }
+
+        /// <summary>市松模様で起動し、再生中も同じ床と視点で木目と市松模様を切り替えられることを確認する。</summary>
+        [UnityTest]
+        public IEnumerator FloorButtonSwitchesMaterialsWithoutChangingPlaybackOrViewpoint()
+        {
+            const string scenePath = "Assets/DanceLearning/Scenes/Main.unity";
+            yield return SceneManager.LoadSceneAsync(scenePath);
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            var camera = Camera.main;
+            var floor = GameObject.Find("Dance Studio").transform.Find("Floor");
+            var renderer = floor.GetComponent<MeshRenderer>();
+            var collider = floor.GetComponent<BoxCollider>();
+            var originalBounds = collider.bounds;
+            var checker = renderer.sharedMaterial;
+            var floorButton = GameObject.Find("Switch Floor").GetComponent<Button>();
+            var floorLabel = floorButton.GetComponentInChildren<Text>();
+            var viewpointButton = GameObject.Find("Switch Viewpoint").GetComponent<Button>();
+            var viewpointLabel = viewpointButton.GetComponentInChildren<Text>();
+            // HMD入力を止め、カメラとCanvasが初期化されてからクリックする。
+            camera.GetComponent<TrackedPoseDriver>().enabled = false;
+            yield return new WaitForSeconds(0.1f);
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(checker.name, Is.EqualTo("Checker Floor"));
+            Assert.That(floorLabel.text, Is.EqualTo("Checker  (X)"));
+            ClickButton(floorButton, camera);
+            Assert.That(renderer.sharedMaterial.name, Is.EqualTo("Oak Floor"));
+            Assert.That(floorLabel.text, Is.EqualTo("Oak  (X)"));
+            Assert.That(playback.IsPlaying, Is.False);
+
+            // 再生と三人称視点が有効な状態でクリックし、切り替え直後の姿勢と視点を比較する。
+            ClickButton(GameObject.Find("Play Recording").GetComponent<Button>(), camera);
+            ClickButton(viewpointButton, camera);
+            yield return null;
+            var eyes = playback.transform.GetChild(0).GetComponentsInChildren<Transform>().Single(item => item.name == "Eyes");
+            var pose = eyes.position;
+            var cameraPosition = camera.transform.position;
+            var cameraRotation = camera.transform.rotation;
+            ClickButton(floorButton, camera);
+            Assert.That(renderer.sharedMaterial, Is.SameAs(checker));
+            Assert.That(floorLabel.text, Is.EqualTo("Checker  (X)"));
+            Assert.That(viewpointLabel.text, Is.EqualTo("Third Person  (B)"));
+            Assert.That(playback.IsPlaying, Is.True);
+            Assert.That(eyes.position, Is.EqualTo(pose));
+            Assert.That(camera.transform.position, Is.EqualTo(cameraPosition));
+            Assert.That(camera.transform.rotation, Is.EqualTo(cameraRotation));
+            Assert.That(collider.bounds, Is.EqualTo(originalBounds));
+
+            // 木目の状態でシーンを読み直し、市松模様で起動することを確認する。
+            ClickButton(floorButton, camera);
+            Assert.That(renderer.sharedMaterial.name, Is.EqualTo("Oak Floor"));
+            yield return SceneManager.LoadSceneAsync(scenePath);
+            var reloadedFloor = GameObject.Find("Dance Studio").transform.Find("Floor");
+            Assert.That(reloadedFloor.GetComponent<MeshRenderer>().sharedMaterial, Is.SameAs(checker));
         }
 
         /// <summary>操作前は静止し、ボタンを押すとモーションが進み、目の位置がカメラに反映される。</summary>
@@ -97,8 +152,10 @@ namespace DanceLearning.Tests
             }
 
             Assert.That(moved, Is.True);
+            var ceiling = studio.Find("Ceiling").GetComponent<BoxCollider>();
+            var ceilingHeight = studio.InverseTransformPoint(ceiling.bounds.min).y;
             Assert.That(eyeBounds.min.x >= -6 && eyeBounds.max.x <= 6 &&
-                eyeBounds.min.y >= 0 && eyeBounds.max.y <= 4 &&
+                eyeBounds.min.y >= 0 && eyeBounds.max.y <= ceilingHeight &&
                 eyeBounds.min.z >= -8 && eyeBounds.max.z <= 8, Is.True,
                 $"The first-person view should stay inside the studio. Eye range: {eyeBounds.min:F3} to {eyeBounds.max:F3}.");
             Assert.That(playback.IsPlaying, Is.False);
@@ -149,14 +206,14 @@ namespace DanceLearning.Tests
             ClickButton(viewpointButton, camera);
             Assert.That(playback.IsPlaying, Is.True);
             Assert.That(label.text, Is.EqualTo("Third Person  (B)"));
-            AssertThirdPersonPose(camera, eyes, playback.transform.forward, 8f);
+            AssertThirdPersonPose(camera, eyes, playback.transform.forward, hmdRotation);
 
             var cameraPosition = camera.transform.position;
             hmdRotation = Quaternion.Euler(2, -3, 1);
             camera.transform.SetLocalPositionAndRotation(new Vector3(-0.1f, 1.7f, 0.25f), hmdRotation);
             yield return new WaitForSeconds(0.3f);
             Assert.That(Vector3.Distance(camera.transform.position, cameraPosition), Is.GreaterThan(0.001f));
-            AssertThirdPersonPose(camera, eyes, playback.transform.forward, Quaternion.Angle(Quaternion.identity, hmdRotation));
+            AssertThirdPersonPose(camera, eyes, playback.transform.forward, hmdRotation);
 
             var eyesBeforeSwitch = eyes.position;
             ClickButton(viewpointButton, camera);
@@ -168,14 +225,50 @@ namespace DanceLearning.Tests
             AssertFirstPersonPose(camera, eyes, hmdRotation);
         }
 
-        /// <summary>収録全体でアバターの表示範囲が画面内に収まることを確認する。</summary>
+        /// <summary>HMDで見回してもステージのワールド姿勢と視点の位置が変わらず、撮影方向だけが変わることを確認する。</summary>
         [UnityTest]
-        public IEnumerator ThirdPersonKeepsAvatarInFrameThroughoutRecording()
+        public IEnumerator ThirdPersonHeadRotationChangesOnlyViewDirection()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
+            var playback = Object.FindAnyObjectByType<DancePlayback>();
+            var camera = Camera.main;
+            var studio = GameObject.Find("Dance Studio").transform;
+            var floor = studio.Find("Floor");
+            var xrOrigin = GameObject.Find("XR Origin (VR)").transform;
+            camera.GetComponent<TrackedPoseDriver>().enabled = false;
+            camera.transform.SetLocalPositionAndRotation(new Vector3(0.2f, 1.6f, -0.3f), Quaternion.identity);
+            playback.ToggleViewpoint();
+            yield return new WaitForSeconds(0.1f);
+
+            var studioPose = new Pose(studio.position, studio.rotation);
+            var floorPose = new Pose(floor.position, floor.rotation);
+            var originPose = new Pose(xrOrigin.position, xrOrigin.rotation);
+            var cameraPose = new Pose(camera.transform.position, camera.transform.rotation);
+            // ヨー・ピッチ・ロールを含む大きな首振りを左右に入力し、基準方向からの回転を比較する。
+            foreach (var hmdRotation in new[] { Quaternion.Euler(25, 60, -15), Quaternion.Euler(-20, -55, 12) })
+            {
+                camera.transform.localRotation = hmdRotation;
+                yield return null;
+                Assert.That(studio.position, Is.EqualTo(studioPose.position));
+                Assert.That(studio.rotation, Is.EqualTo(studioPose.rotation));
+                Assert.That(floor.position, Is.EqualTo(floorPose.position));
+                Assert.That(floor.rotation, Is.EqualTo(floorPose.rotation));
+                Assert.That(Vector3.Distance(xrOrigin.position, originPose.position), Is.LessThan(0.001f));
+                Assert.That(Quaternion.Angle(xrOrigin.rotation, originPose.rotation), Is.LessThan(0.1f));
+                Assert.That(Vector3.Distance(camera.transform.position, cameraPose.position), Is.LessThan(0.001f));
+                Assert.That(Quaternion.Angle(camera.transform.rotation, cameraPose.rotation * hmdRotation), Is.LessThan(0.1f));
+            }
+        }
+
+        /// <summary>HMDを正面に向けた状態で、収録全体のアバターが基準の構図に収まることを確認する。</summary>
+        [UnityTest]
+        public IEnumerator ThirdPersonKeepsAvatarInFrameWhenLookingForward()
         {
             yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
             var playback = Object.FindAnyObjectByType<DancePlayback>();
             var camera = Camera.main;
             camera.GetComponent<TrackedPoseDriver>().enabled = false;
+            camera.transform.localRotation = Quaternion.identity;
             var renderers = playback.transform.GetChild(0).GetComponentsInChildren<MeshRenderer>();
             playback.ToggleViewpoint();
             playback.PlayFromStart();
@@ -185,12 +278,9 @@ namespace DanceLearning.Tests
             try
             {
                 Time.timeScale = 5;
-                // 大きく見回すHMD入力も与え、許容範囲の端でアバターが収まることを確認する。
+                // 収録の各フレームで、正面を向いたときのアバターの描画範囲を確認する。
                 while (playback.IsPlaying && Time.realtimeSinceStartup < deadline)
                 {
-                    camera.transform.localRotation = Time.frameCount % 2 == 0
-                        ? Quaternion.Euler(65, 0, 0)
-                        : Quaternion.Euler(-65, 0, 0);
                     yield return null;
                     AssertAvatarInFrame(camera, renderers);
                 }
@@ -203,9 +293,9 @@ namespace DanceLearning.Tests
             Assert.That(playback.IsPlaying, Is.False);
         }
 
-        /// <summary>鏡面と枠の寸法、および枠から天井までを覆う白い壁を確認する。</summary>
+        /// <summary>鏡枠がスタジオ中央で左右の壁と床・天井の内面まで届くことを確認する。</summary>
         [UnityTest]
-        public IEnumerator MirrorMarkerUsesStudioCenterAndAvatarHeight()
+        public IEnumerator MirrorMarkerUsesStudioCenterAndRoomHeight()
         {
             yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
             var studio = GameObject.Find("Dance Studio").transform;
@@ -221,26 +311,16 @@ namespace DanceLearning.Tests
             Assert.That(bottom.min.x, Is.EqualTo(leftWall.max.x).Within(0.001f));
             Assert.That(bottom.max.x, Is.EqualTo(rightWall.min.x).Within(0.001f));
             Assert.That(bottom.min.y, Is.EqualTo(floor.max.y).Within(0.001f));
-            var upperWall = plane.Find("Wall Above Mirror").GetComponent<MeshRenderer>();
-            var frontWall = studio.Find("Walls/Front Wall").GetComponent<MeshRenderer>();
             var ceiling = studio.Find("Ceiling").GetComponent<BoxCollider>().bounds;
-            Assert.That(upperWall.sharedMaterial, Is.SameAs(frontWall.sharedMaterial));
-            Assert.That(upperWall.bounds.min.y, Is.EqualTo(top.max.y).Within(0.001f));
-            Assert.That(upperWall.bounds.max.y, Is.EqualTo(ceiling.min.y).Within(0.001f));
-            Assert.That(upperWall.bounds.min.x, Is.EqualTo(leftWall.max.x).Within(0.001f));
-            Assert.That(upperWall.bounds.max.x, Is.EqualTo(rightWall.min.x).Within(0.001f));
-
-#if UNITY_EDITOR
-            // 未再生のプレハブを独立に測り、枠の外寸に30 cmが加わっていることを確認する。
-            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/DanceLearning/Prefabs/Avatars/Mocopi Avatar.prefab");
-            var model = Object.Instantiate(prefab);
-            var modelRenderers = model.GetComponentsInChildren<MeshRenderer>();
-            var modelHeight = modelRenderers.Max(item => item.bounds.max.y) -
-                modelRenderers.Min(item => item.bounds.min.y);
-            Object.Destroy(model);
-            Assert.That(top.max.y - bottom.min.y, Is.EqualTo(modelHeight + 0.30f).Within(0.001f));
-#endif
+            Assert.That(top.max.y, Is.EqualTo(ceiling.min.y).Within(0.001f));
+            // 左右の縦枠も床から天井まで途切れず伸びているかを順に確認する。
+            foreach (var markerName in new[] { "Left Marker", "Right Marker" })
+            {
+                var side = plane.Find(markerName).GetComponent<MeshRenderer>().bounds;
+                Assert.That(side.min.y, Is.EqualTo(floor.max.y).Within(0.001f), markerName);
+                Assert.That(side.max.y, Is.EqualTo(ceiling.min.y).Within(0.001f), markerName);
+            }
+            Assert.That(plane.Find("Wall Above Mirror"), Is.Null);
         }
 
         /// <summary>鏡像の移動と骨の向き、頭の位置とHMD姿勢から決まる鏡視点を確認する。</summary>
@@ -338,13 +418,13 @@ namespace DanceLearning.Tests
             ExecuteEvents.Execute(button.gameObject, pointer, ExecuteEvents.pointerClickHandler);
         }
 
-        /// <summary>三人称の固定オフセットと、画角内でのHMD回転量を確認する。</summary>
-        private static void AssertThirdPersonPose(Camera camera, Transform eyes, Vector3 heading, float lookAngle)
+        /// <summary>三人称の固定オフセットと、基準の構図に重ねたHMD回転を確認する。</summary>
+        private static void AssertThirdPersonPose(Camera camera, Transform eyes, Vector3 heading, Quaternion hmdRotation)
         {
             var target = eyes.parent.position - heading * 2.8f + Vector3.up * 0.25f;
             var framingRotation = Quaternion.LookRotation(eyes.parent.position - Vector3.up * 0.75f - target);
             Assert.That(Vector3.Distance(camera.transform.position, target), Is.LessThan(0.001f));
-            Assert.That(Quaternion.Angle(camera.transform.rotation, framingRotation), Is.EqualTo(lookAngle).Within(0.1f));
+            Assert.That(Quaternion.Angle(camera.transform.rotation, framingRotation * hmdRotation), Is.LessThan(0.1f));
         }
 
         /// <summary>各メッシュを囲むボックスの8頂点を画面座標に変換して、表示範囲を確認する。</summary>

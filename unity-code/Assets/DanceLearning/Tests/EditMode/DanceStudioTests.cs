@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -82,7 +83,69 @@ namespace DanceLearning.Tests
             }
         }
 
-        /// <summary>床から4mの位置に天井があり、室内中央と四隅の上方を覆っていることを確認する。</summary>
+        /// <summary>床メッシュの上面を実座標で測り、X・Z方向とも50 cmごとに明暗が交互に並ぶことを確認する。</summary>
+        [Test]
+        public void CheckerFloorUsesHalfMeterSquares()
+        {
+            EditorSceneManager.OpenScene("Assets/DanceLearning/Scenes/Main.unity");
+            var floor = GameObject.Find("Dance Studio").transform.Find("Floor");
+            var material = floor.GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.That(material.name, Is.EqualTo("Checker Floor"));
+            var scale = material.GetTextureScale("_BaseMap");
+            var offset = material.GetTextureOffset("_BaseMap");
+            var texture = (Texture2D)material.GetTexture("_BaseMap");
+            Assert.That(texture.wrapMode, Is.EqualTo(TextureWrapMode.Repeat));
+            Assert.That(texture.filterMode, Is.EqualTo(FilterMode.Trilinear));
+            Assert.That(texture.mipmapCount, Is.GreaterThan(1));
+            Assert.That(texture.anisoLevel, Is.GreaterThan(1));
+
+            var probe = new GameObject("Floor UV Probe") { hideFlags = HideFlags.HideAndDontSave };
+            var pixels = new Texture2D(2, 2) { wrapMode = TextureWrapMode.Repeat };
+            try
+            {
+                // 床と同じメッシュでレイを受け、実際に描画に使う上面のUVを取得する。
+                probe.transform.SetPositionAndRotation(floor.position, floor.rotation);
+                probe.transform.localScale = floor.lossyScale;
+                var mesh = probe.AddComponent<MeshCollider>();
+                mesh.sharedMesh = floor.GetComponent<MeshFilter>().sharedMesh;
+                Physics.SyncTransforms();
+                var center = TiledFloorUv(mesh, scale, offset, 0, 0);
+                var xStep = TiledFloorUv(mesh, scale, offset, 0.5f, 0) - center;
+                var zStep = TiledFloorUv(mesh, scale, offset, 0, 0.5f) - center;
+                Assert.That(xStep.magnitude, Is.EqualTo(0.5f).Within(0.0001f));
+                Assert.That(zStep.magnitude, Is.EqualTo(0.5f).Within(0.0001f));
+                Assert.That(Vector2.Dot(xStep, zStep), Is.EqualTo(0).Within(0.0001f));
+                Assert.That(Mathf.Repeat(center.x + 0.001f, 0.5f), Is.EqualTo(0.001f).Within(0.0001f));
+                Assert.That(Mathf.Repeat(center.y + 0.001f, 0.5f), Is.EqualTo(0.001f).Within(0.0001f));
+
+                // 元画像から隣り合う4マスの中心を読み、対角線上だけ同じ色になることを確認する。
+                Assert.That(pixels.LoadImage(File.ReadAllBytes(AssetDatabase.GetAssetPath(texture))), Is.True);
+                var cell = center + (xStep + zStep) * 0.5f;
+                var first = pixels.GetPixelBilinear(cell.x, cell.y).grayscale;
+                var alongX = pixels.GetPixelBilinear(cell.x + xStep.x, cell.y + xStep.y).grayscale;
+                var alongZ = pixels.GetPixelBilinear(cell.x + zStep.x, cell.y + zStep.y).grayscale;
+                var diagonal = cell + xStep + zStep;
+                Assert.That(Mathf.Abs(first - alongX), Is.GreaterThan(0.25f));
+                Assert.That(alongX, Is.EqualTo(alongZ).Within(0.001f));
+                Assert.That(pixels.GetPixelBilinear(diagonal.x, diagonal.y).grayscale, Is.EqualTo(first).Within(0.001f));
+            }
+            finally
+            {
+                // 検証用のメッシュと画像はシーンやアセットに残さない。
+                Object.DestroyImmediate(probe);
+                Object.DestroyImmediate(pixels);
+            }
+        }
+
+        /// <summary>床中央からの実距離で上面を調べ、材質の繰り返しとオフセットを適用したUVを返す。</summary>
+        private static Vector2 TiledFloorUv(MeshCollider mesh, Vector2 scale, Vector2 offset, float x, float z)
+        {
+            var origin = mesh.transform.position + mesh.transform.right * x + mesh.transform.forward * z + Vector3.up;
+            Assert.That(mesh.Raycast(new Ray(origin, Vector3.down), out var hit, 2), Is.True);
+            return Vector2.Scale(hit.textureCoord, scale) + offset;
+        }
+
+        /// <summary>床から4 mの位置に天井があり、四方の壁と室内中央・四隅の上方を覆うことを確認する。</summary>
         [Test]
         public void CeilingCoversRoomAtFourMetersAboveFloor()
         {
@@ -91,7 +154,17 @@ namespace DanceLearning.Tests
             var ceiling = studio.Find("Ceiling");
             Assert.That(ceiling, Is.Not.Null);
             var collider = ceiling.GetComponent<BoxCollider>();
-            Assert.That(collider.bounds.min.y, Is.EqualTo(studio.position.y + 4).Within(0.001f));
+            var floorHeight = studio.Find("Floor").GetComponent<BoxCollider>().bounds.max.y;
+            var ceilingHeight = collider.bounds.min.y;
+            Assert.That(ceilingHeight - floorHeight, Is.EqualTo(4f).Within(0.001f));
+            // 四方の壁を順番に調べ、下端が床、上端が天井に接していることを確認する。
+            var walls = studio.Find("Walls");
+            foreach (var wallName in new[] { "Front Wall", "Back Wall", "Left Wall", "Right Wall" })
+            {
+                var bounds = walls.Find(wallName).GetComponent<BoxCollider>().bounds;
+                Assert.That(bounds.min.y, Is.EqualTo(floorHeight).Within(0.001f), wallName);
+                Assert.That(bounds.max.y, Is.EqualTo(ceilingHeight).Within(0.001f), wallName);
+            }
             // 中央と、壁のすぐ内側の四隅から真上へレイを飛ばし、天井に当たるかを順番に調べる。
             foreach (var point in new[]
             {
@@ -101,7 +174,7 @@ namespace DanceLearning.Tests
             {
                 var ray = new Ray(studio.TransformPoint(point + Vector3.up), Vector3.up);
                 Assert.That(collider.Raycast(ray, out var hit, 5), Is.True);
-                Assert.That(hit.distance, Is.EqualTo(3).Within(0.001f));
+                Assert.That(hit.distance, Is.EqualTo(3f).Within(0.001f));
             }
             // 天井が既存のDirectional Lightを遮らず、室内の明るさを保つ設定を確認する。
             Assert.That(ceiling.GetComponent<MeshRenderer>().shadowCastingMode,

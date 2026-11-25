@@ -8,14 +8,14 @@ using UnityEngine.Rendering.Universal;
 namespace DanceLearning
 {
     /// <summary>
-    /// 収録と鏡像を同期再生し、XRカメラを一人称・三人称・鏡の視点に切り替える。
+    /// 収録と鏡像の再生、XR視点の切り替え、スタジオの床面操作を扱う。
     /// </summary>
     [DefaultExecutionOrder(100)]
     public sealed class DancePlayback : MonoBehaviour
     {
         private const float ThirdPersonAimBelowHead = 0.75f;
-        private const float ThirdPersonLookLimit = 8f;
-        private const float MirrorHeightMargin = 0.30f;
+        public const string CheckerFloorLabel = "Checker  (X)";
+        private const string OakFloorLabel = "Oak  (X)";
 
         [SerializeField, Tooltip("Animator を持つ配置済みアバターのルート")] private GameObject avatar;
         [SerializeField, Tooltip("アバターのボーン階層に対応する AnimationClip")] private AnimationClip clip;
@@ -25,6 +25,9 @@ namespace DanceLearning
         [SerializeField] private Button playButton;
         [SerializeField] private Button viewpointButton;
         [SerializeField] private Text viewpointLabel;
+        [SerializeField] private Button floorButton;
+        [SerializeField] private Text floorLabel;
+        [SerializeField] private Material oakFloorMaterial;
         [SerializeField, Min(0)] private float thirdPersonDistance = 2.8f;
         [SerializeField, Min(0)] private float thirdPersonHeight = 0.25f;
         [SerializeField, Tooltip("鏡面の基準となる Dance Studio のルート")] private Transform studio;
@@ -35,6 +38,9 @@ namespace DanceLearning
         private float elapsed;
         private bool primaryButtonWasPressed;
         private bool secondaryButtonWasPressed;
+        private bool floorButtonWasPressed;
+        private MeshRenderer floorRenderer;
+        private Material checkerFloorMaterial;
         private Viewpoint viewpoint;
         private Vector3 thirdPersonHeading;
         private Transform mirrorPlane;
@@ -49,6 +55,13 @@ namespace DanceLearning
 
         public bool IsPlaying { get; private set; }
 
+        /// <summary>スタジオの床と、起動時に割り当てられている市松模様を取得する。</summary>
+        private void Awake()
+        {
+            floorRenderer = studio.Find("Floor").GetComponent<MeshRenderer>();
+            checkerFloorMaterial = floorRenderer.sharedMaterial;
+        }
+
         /// <summary>開始姿勢を適用し、ボタン入力を待つ。</summary>
         private void OnEnable()
         {
@@ -60,18 +73,10 @@ namespace DanceLearning
             Application.onBeforeRender += AlignBeforeRender;
             // 再生オブジェクトの向きから、三人称カメラを置く水平軸を固定する。
             thirdPersonHeading = Quaternion.Euler(0, transform.eulerAngles.y, 0) * Vector3.forward;
+            ApplyPose(0);
+            // 初回だけ、開始姿勢の頭の位置を基準に鏡像と鏡枠を作る。
             if (mirrorPlane == null)
-            {
-                // 収録の姿勢を適用する前に、アバターの初期モデルの身長を測る。
-                sourceRenderers = avatar.GetComponentsInChildren<Renderer>(true);
-                var frameHeight = GetAvatarHeight() + MirrorHeightMargin;
-                ApplyPose(0);
-                CreateMirror(frameHeight);
-            }
-            else
-            {
-                ApplyPose(0);
-            }
+                CreateMirror();
             mirrorPlane.gameObject.SetActive(true);
             UpdateSourceVisibility();
             playButton.gameObject.SetActive(true);
@@ -111,7 +116,16 @@ namespace DanceLearning
             FollowAvatar();
         }
 
-        /// <summary>PICO右コントローラーのAとBを、画面の再生ボタンと視点ボタンに対応させる。</summary>
+        /// <summary>床のマテリアルだけを切り替え、現在の床の種類をボタンに表示する。</summary>
+        public void ToggleFloor()
+        {
+            // 市松模様のときは木目に切り替え、木目のときは市松模様に戻す。
+            var useOak = floorRenderer.sharedMaterial == checkerFloorMaterial;
+            floorRenderer.sharedMaterial = useOak ? oakFloorMaterial : checkerFloorMaterial;
+            floorLabel.text = useOak ? OakFloorLabel : CheckerFloorLabel;
+        }
+
+        /// <summary>PICO右手のAとBを再生と視点切り替えに、左手のXを床面切り替えに対応させる。</summary>
         private void Update()
         {
 #if UNITY_EDITOR
@@ -120,6 +134,8 @@ namespace DanceLearning
             var controller = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             HandleButton(controller, CommonUsages.primaryButton, playButton, ref primaryButtonWasPressed);
             HandleButton(controller, CommonUsages.secondaryButton, viewpointButton, ref secondaryButtonWasPressed);
+            var leftController = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            HandleButton(leftController, CommonUsages.primaryButton, floorButton, ref floorButtonWasPressed);
         }
 
         /// <summary>有効なボタンを押した瞬間だけクリックとして扱い、長押し時の連続操作を防ぐ。</summary>
@@ -158,18 +174,8 @@ namespace DanceLearning
                 clip.SampleAnimation(reflectedAvatar, time);
         }
 
-        /// <summary>初期モデルの描画範囲をまとめ、足元から頭頂までの高さをワールド単位で測る。</summary>
-        private float GetAvatarHeight()
-        {
-            var bounds = sourceRenderers[0].bounds;
-            // 身体がパーツごとのメッシュでできている場合も、上下端をすべて含める。
-            foreach (var sourceRenderer in sourceRenderers)
-                bounds.Encapsulate(sourceRenderer.bounds);
-            return bounds.size.y;
-        }
-
-        /// <summary>スタジオ中央に鏡面を固定し、鏡像と枠、枠の上の白い壁を配置する。</summary>
-        private void CreateMirror(float frameHeight)
+        /// <summary>スタジオ中央に鏡面を固定し、鏡像と床から天井までの枠を配置する。</summary>
+        private void CreateMirror()
         {
             var floor = studio.Find("Floor").GetComponent<BoxCollider>();
             var planePosition = floor.transform.TransformPoint(floor.center + Vector3.up * (floor.size.y * 0.5f));
@@ -192,6 +198,8 @@ namespace DanceLearning
             reflectedAvatar.name = "Reflected Avatar";
             clip.SampleAnimation(reflectedAvatar, 0);
 
+            // 元のアバターの各パーツの表示状態を保存し、視点を切り替えたときに復元できるようにする。
+            sourceRenderers = avatar.GetComponentsInChildren<Renderer>(true);
             sourceRenderingWasOff = new bool[sourceRenderers.Length];
             for (var index = 0; index < sourceRenderers.Length; index++)
                 sourceRenderingWasOff[index] = sourceRenderers[index].forceRenderingOff;
@@ -202,11 +210,13 @@ namespace DanceLearning
             var rightEdge = GetWallInnerEdge(rightWall, -1);
             var frameWidth = rightEdge - leftEdge;
             var frameCenter = (leftEdge + rightEdge) * 0.5f;
-            const float thickness = 0.045f;
-            CreateWallAboveMirror(frameCenter, frameWidth, frameHeight, thickness);
+            // 枠用のマテリアルが設定されている場合に、床と天井の内面に上下端を合わせる。
             if (mirrorMarkerMaterial != null)
             {
-                // 左右の壁の内面まで枠を伸ばし、部材の厚みを含めて指定寸法に収める。
+                var ceiling = studio.Find("Ceiling").GetComponent<BoxCollider>();
+                var underside = ceiling.center - Vector3.up * (ceiling.size.y * 0.5f);
+                var frameHeight = mirrorPlane.InverseTransformPoint(ceiling.transform.TransformPoint(underside)).y;
+                const float thickness = 0.045f;
                 var color = new MaterialPropertyBlock();
                 color.SetColor("_BaseColor", new Color(0.05f, 0.65f, 0.62f));
                 var horizontal = new Vector3(frameWidth, thickness, thickness);
@@ -216,26 +226,6 @@ namespace DanceLearning
                 CreateMirrorMarker("Left Marker", new Vector3(leftEdge + thickness * 0.5f, frameHeight * 0.5f, 0), vertical, color);
                 CreateMirrorMarker("Right Marker", new Vector3(rightEdge - thickness * 0.5f, frameHeight * 0.5f, 0), vertical, color);
             }
-        }
-
-        /// <summary>既存の白い壁のメッシュとマテリアルで、鏡枠から天井までを覆う。</summary>
-        private void CreateWallAboveMirror(float center, float width, float frameHeight, float thickness)
-        {
-            var ceiling = studio.Find("Ceiling").GetComponent<BoxCollider>();
-            var underside = ceiling.center - Vector3.up * (ceiling.size.y * 0.5f);
-            var ceilingHeight = mirrorPlane.InverseTransformPoint(ceiling.transform.TransformPoint(underside)).y;
-            var wallHeight = ceilingHeight - frameHeight;
-            // 枠が天井まで達する場合は壁を追加する隙間がない。
-            if (wallHeight <= 0f)
-                return;
-
-            var frontWall = studio.Find("Walls/Front Wall");
-            var wall = new GameObject("Wall Above Mirror", typeof(MeshFilter), typeof(MeshRenderer));
-            wall.transform.SetParent(mirrorPlane, false);
-            wall.transform.localPosition = new Vector3(center, frameHeight + wallHeight * 0.5f, 0f);
-            wall.transform.localScale = new Vector3(width, wallHeight, thickness);
-            wall.GetComponent<MeshFilter>().sharedMesh = frontWall.GetComponent<MeshFilter>().sharedMesh;
-            wall.GetComponent<MeshRenderer>().sharedMaterial = frontWall.GetComponent<MeshRenderer>().sharedMaterial;
         }
 
         /// <summary>左右の壁から、室内側の表面の横位置を鏡面の座標で求める。</summary>
@@ -314,12 +304,8 @@ namespace DanceLearning
                 var headPosition = eyes.parent.position;
                 targetPosition = headPosition - thirdPersonHeading * thirdPersonDistance + Vector3.up * thirdPersonHeight;
                 var bodyCenter = headPosition - Vector3.up * ThirdPersonAimBelowHead;
-                var framingRotation = Quaternion.LookRotation(bodyCenter - targetPosition);
-
-                // HMDの回転は全身を画面内に収めるための範囲に制限する。
-                var trackedRotation = Quaternion.Inverse(xrOrigin.rotation) * viewCamera.transform.rotation;
-                var lookRotation = Quaternion.RotateTowards(Quaternion.identity, trackedRotation, ThirdPersonLookLimit);
-                xrOrigin.rotation = framingRotation * lookRotation * Quaternion.Inverse(trackedRotation);
+                // XR Originは基準の構図に向け、HMDの回転は子カメラのローカル回転としてそのまま重ねる。
+                xrOrigin.rotation = Quaternion.LookRotation(bodyCenter - targetPosition);
             }
             else
             {
