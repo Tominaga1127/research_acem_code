@@ -13,6 +13,33 @@ namespace DanceLearning.Tests
     /// <summary>Mainの再生操作、鏡像、三つの視点を確認する。</summary>
     public sealed class DancePlaybackTests
     {
+        /// <summary>操作パネルの中心が右上にあり、両ボタンがカメラの描画範囲に収まることを確認する。</summary>
+        [UnityTest]
+        public IEnumerator MainShowsPlaybackControlsInUpperRight()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/DanceLearning/Scenes/Main.unity");
+            Canvas.ForceUpdateCanvases();
+
+            var panel = GameObject.Find("Playback UI").GetComponent<Canvas>();
+            var camera = panel.worldCamera;
+            var center = camera.WorldToViewportPoint(panel.transform.position);
+            Assert.That(center.x, Is.GreaterThan(0.5f));
+            Assert.That(center.y, Is.GreaterThan(0.5f));
+
+            var corners = new Vector3[4];
+            // 両ボタンの四隅をViewport座標で確認し、画面端での見切れを検出する。
+            foreach (var button in panel.GetComponentsInChildren<Button>())
+            {
+                ((RectTransform)button.transform).GetWorldCorners(corners);
+                foreach (var corner in corners)
+                {
+                    var point = camera.WorldToViewportPoint(corner);
+                    Assert.That(point.x, Is.InRange(0f, 1f), button.name);
+                    Assert.That(point.y, Is.InRange(0.5f, 1f), button.name);
+                }
+            }
+        }
+
         /// <summary>操作前は静止し、ボタンを押すとモーションが進み、目の位置がカメラに反映される。</summary>
         [UnityTest]
         public IEnumerator MainPlaysRecordingFromButtonAndTracksEyes()

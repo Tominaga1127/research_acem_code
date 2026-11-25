@@ -112,13 +112,14 @@ namespace DanceLearning.Editor
             }
         }
 
-        /// <summary>XRカメラの前に、マウスで操作できるワールド空間のパネルを作る。</summary>
+        /// <summary>XRカメラの視界の右上に、マウスで操作できるワールド空間のパネルを作る。</summary>
         private static RectTransform CreateControlPanel(Camera camera)
         {
             var panel = new GameObject("Playback UI", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             panel.transform.SetParent(camera.transform, false);
-            panel.transform.localPosition = new Vector3(0, -0.23f, 1.2f);
-            panel.transform.localScale = Vector3.one * 0.0016f;
+            // 右上に寄せ、横並びのボタンが視界に収まるようにパネルを縮める。
+            panel.transform.localPosition = new Vector3(0.32f, 0.44f, 1.2f);
+            panel.transform.localScale = Vector3.one * 0.0013f;
             var rect = panel.GetComponent<RectTransform>();
             rect.sizeDelta = new Vector2(532, 62);
             var canvas = panel.GetComponent<Canvas>();
